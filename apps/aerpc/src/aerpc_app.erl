@@ -38,4 +38,12 @@ check_env() ->
       [{[<<"http">>, <<"rpc">>, <<"max_batch_size">>],
         {set_env, max_batch_size}},
        {[<<"http">>, <<"rpc">>, <<"chain_id">>],
-        {set_env, chain_id}}]).
+        {set_env, chain_id}},
+       {[<<"http">>, <<"rpc">>, <<"log_index">>],
+        {set_env, log_index}},
+       {[<<"http">>, <<"rpc">>, <<"log_retention_blocks">>],
+        {set_env, log_retention_blocks}},
+       {[<<"http">>, <<"rpc">>, <<"max_filters">>],
+        {set_env, max_filters}},
+       {[<<"http">>, <<"rpc">>, <<"filter_ttl_seconds">>],
+        {set_env, filter_ttl_seconds}}]).

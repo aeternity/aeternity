@@ -12,7 +12,14 @@
 %%%   -32005  range too wide                  (eth_getLogs)
 %%%   -32006  batch too large                 (transport-level)
 %%%   -32007  address index not ready         (20-byte address lookup)
+%%%   -32009  too many filters                (filter registry cap)
+%%%   -32010  filter registry unavailable     (endpoint enabled, no registry)
 %%%   -39001  block hash not on canonical     (EIP-1898 requireCanonical)
+%%%
+%%% One exception to the "allocate our own" rule: an unknown filter id is
+%%% `-32000 filter not found', byte-for-byte what geth returns, because
+%%% that is the string eth tooling recognises for a filter that has
+%%% expired and needs re-creating.
 %%%
 %%% Keep this table in lock-step with the doc under
 %%% /tasks/eth-like-rpc-layer/rpc-endpoint/ponder-compat-gaps.md.
@@ -23,7 +30,9 @@
 -export([range_too_wide/2,
          batch_too_large/1,
          address_index_not_ready/0,
-         filter_registry_pending/0]).
+         filter_not_found/0,
+         too_many_filters/1,
+         filter_registry_unavailable/0]).
 
 %% @doc -32007. A 20-byte address could not be resolved AND the reverse
 %% index has not finished building, so we cannot tell "no such account"
@@ -58,7 +67,28 @@ batch_too_large(Max) ->
                           "Split the batch.", [Max])),
     {error, -32006, Msg}.
 
-%% @doc Helper for the filter-family stubs.
--spec filter_registry_pending() -> {error, integer(), binary()}.
-filter_registry_pending() ->
-    {error, -32004, <<"Filter registry not yet implemented (v1.5)">>}.
+%% @doc geth's exact code and message for an id the registry does not
+%% hold -- either never allocated, already uninstalled, or expired by the
+%% idle TTL. Clients treat this as "re-create the filter", which is the
+%% right reaction to all three.
+-spec filter_not_found() -> {error, integer(), binary()}.
+filter_not_found() ->
+    {error, -32000, <<"filter not found">>}.
+
+%% @doc -32009. The registry is at its configured cap. Naming the cap
+%% lets an operator see whether to raise it or a client to stop leaking
+%% filters it never uninstalls.
+-spec too_many_filters(non_neg_integer()) -> {error, integer(), binary()}.
+too_many_filters(Max) ->
+    Msg = iolist_to_binary(
+            io_lib:format("Too many filters (max ~p). Uninstall unused "
+                          "filters or raise http > rpc > max_filters.",
+                          [Max])),
+    {error, -32009, Msg}.
+
+%% @doc -32010. The endpoint is serving but the filter registry is not
+%% running, which is a node configuration state rather than a bad
+%% request -- so it is reported as such instead of surfacing a crash.
+-spec filter_registry_unavailable() -> {error, integer(), binary()}.
+filter_registry_unavailable() ->
+    {error, -32010, <<"Filter registry is not running on this node">>}.

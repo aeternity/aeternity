@@ -22,6 +22,8 @@
           start_link/0
         , init/1
         , ensure_addr_index/0
+        , ensure_filter_registry/0
+        , ensure_log_indexer/0
         ]).
 
 -define(SERVER, ?MODULE).
@@ -49,10 +51,47 @@ ensure_addr_index() ->
     end.
 
 restart_addr_index() ->
-    case supervisor:restart_child(?SERVER, aerpc_addr_index) of
+    ensure(aerpc_addr_index).
+
+%% @doc Start the poll-based filter registry. Started with the endpoint
+%% rather than with the app: it holds no state and does no per-block work
+%% until a client allocates a filter, but it does subscribe to
+%% `tx_received', and a node with the endpoint off should not.
+-spec ensure_filter_registry() -> ok | {error, term()}.
+ensure_filter_registry() ->
+    start_or_restart(child_spec(aerpc_filter_registry)).
+
+%% @doc Start the log index. Separately gated by `http > rpc >
+%% log_index' because, unlike the other two, it walks a whole generation
+%% per key block and holds a bounded but real amount of memory -- that is
+%% a cost an operator opts into, not one that follows from turning the
+%% endpoint on. With it off, `eth_getLogs' still answers correctly from
+%% the inline walker.
+-spec ensure_log_indexer() -> ok | {error, term()}.
+ensure_log_indexer() ->
+    start_or_restart(child_spec(aerpc_log_indexer)).
+
+child_spec(Mod) ->
+    #{id       => Mod,
+      start    => {Mod, start_link, []},
+      restart  => permanent,
+      shutdown => 5000,
+      type     => worker,
+      modules  => [Mod]}.
+
+start_or_restart(#{id := Id} = Spec) ->
+    case supervisor:start_child(?SERVER, Spec) of
         {ok, _Pid}                    -> ok;
-        {error, running}              -> ok;
+        {error, {already_started, _}} -> ok;
+        {error, already_present}      -> ensure(Id);
         {error, _Reason} = Err        -> Err
+    end.
+
+ensure(Id) ->
+    case supervisor:restart_child(?SERVER, Id) of
+        {ok, _Pid}             -> ok;
+        {error, running}       -> ok;
+        {error, _Reason} = Err -> Err
     end.
 
 init([]) ->

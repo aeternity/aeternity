@@ -1,15 +1,37 @@
 %%%-------------------------------------------------------------------
-%%% @doc Real-time log indexer for `eth_getLogs'.
+%%% @doc Real-time log index for `eth_getLogs'.
 %%%
-%%% Subscribes to `aec_events:top_changed' and pushes the new
-%%% generation's logs into [`aerpc_log_store'](aerpc_log_store.erl).
-%%% No backfill: at boot the floor is set to `top+1' (so heights at-
-%%% or-below-startup-top fall through to the inline walker forever).
-%%% This keeps boot cheap; a backfill mode can be added later if/when
-%%% archive-style indexing is needed.
+%%% == What it indexes, and when ==
 %%%
-%%% Aerpc applications depend on aecore so by the time this gen_server
-%%% starts, `aec_chain:top_header/0' is callable.
+%%% Only CLOSED generations. A generation stays open until the next key
+%%% block arrives, so indexing on every micro block and advancing the
+%%% watermark with it would mark a height as covered while more micro
+%%% blocks were still landing under it -- and a later query for that
+%%% height would then read the index and silently miss the newer logs.
+%%% So: on a key block at height H, index generation H-1 and set the
+%%% watermark to H-1. Queries for the open generation fall through to
+%%% `aerpc_logs`' inline walker, which is always current.
+%%%
+%%% No backfill. At start the floor is `top + 1', so everything at or
+%%% below the startup top stays with the inline walker forever. That
+%%% keeps boot free; an archive mode would be a separate decision.
+%%%
+%%% == Retention ==
+%%%
+%%% The index is a bounded sliding window, `http > rpc >
+%%% log_retention_blocks' generations wide (0 disables eviction, which is
+%%% unbounded memory and is not the default). After each indexed
+%%% generation, entries below the window are deleted AND THE FLOOR IS
+%%% RAISED to match. Raising the floor is the load-bearing half: it is
+%%% what makes `aerpc_log_store:indexed/1' report the narrowed coverage,
+%%% so a query reaching below the window is sent to the walker instead of
+%%% being answered from an index that no longer holds those heights.
+%%% Evicting without moving the floor would return a short log list that
+%%% looks exactly like a complete one -- the same shape of wrong answer
+%%% the address index refuses to give.
+%%%
+%%% The tables are owned by this process, so they vanish when it stops
+%%% and a restart cannot serve stale data.
 %%% @end
 %%%-------------------------------------------------------------------
 -module(aerpc_log_indexer).
@@ -17,7 +39,8 @@
 -behaviour(gen_server).
 
 -export([start_link/0,
-         status/0]).
+         status/0,
+         retention/0]).
 
 -export([init/1,
          handle_call/3,
@@ -26,9 +49,12 @@
          terminate/2,
          code_change/3]).
 
--record(state, {
-    started_at :: non_neg_integer()
-}).
+%% Generations kept in the index when the operator sets nothing. Wide
+%% enough that an indexer-backed query is the common case, narrow enough
+%% that the table cannot grow without bound on a long-running node.
+-define(DEFAULT_RETENTION, 10000).
+
+-record(state, {started_at :: non_neg_integer()}).
 
 %% ===================================================================
 %% Public API
@@ -38,18 +64,22 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-%% @doc Return `#{floor, watermark, indexed_count}'. Useful for health
-%% checks and for tests that need to verify the indexer is current.
+%% @doc `#{floor, watermark, entries, retention}'. `floor' and
+%% `watermark' bound what the index actually covers; anything outside
+%% that range is served by the walker.
 -spec status() -> map().
 status() ->
-    #{floor      => aerpc_log_store:floor_height(),
-      watermark  => aerpc_log_store:watermark(),
-      entries    => ets_size()}.
+    #{floor     => aerpc_log_store:floor_height(),
+      watermark => aerpc_log_store:watermark(),
+      entries   => aerpc_log_store:size(),
+      retention => retention()}.
 
-ets_size() ->
-    case ets:info(aerpc_log_idx) of
-        undefined -> 0;
-        Info -> proplists:get_value(size, Info, 0)
+%% @doc Window width in generations. 0 means "never evict".
+-spec retention() -> non_neg_integer().
+retention() ->
+    case application:get_env(aerpc, log_retention_blocks, ?DEFAULT_RETENTION) of
+        N when is_integer(N), N >= 0 -> N;
+        _Other                       -> ?DEFAULT_RETENTION
     end.
 
 %% ===================================================================
@@ -59,9 +89,8 @@ ets_size() ->
 init([]) ->
     aerpc_log_store:init(),
     Started = current_top_height(),
-    %% Heights up to and including `Started' are NOT indexed by this
-    %% process. Floor is `Started + 1' so a query for height Started
-    %% falls through to the inline walker.
+    %% Heights up to and including `Started' are not indexed by this
+    %% process, so a query for them falls through to the walker.
     aerpc_log_store:set_floor(Started + 1),
     aerpc_log_store:set_watermark(Started),
     try aec_events:subscribe(top_changed)
@@ -75,9 +104,9 @@ handle_call(_Msg, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({gproc_ps_event, top_changed,
-             #{info := #{block_hash := KBHash}}}, State) ->
-    index_block(KBHash),
+handle_info({gproc_ps_event, top_changed, #{info := Info}}, State)
+  when is_map(Info) ->
+    maybe_index(Info, State),
     {noreply, State};
 handle_info({gproc_ps_event, top_changed, _Other}, State) ->
     {noreply, State};
@@ -99,16 +128,73 @@ current_top_height() ->
     catch _:_ -> 0
     end.
 
-index_block(KBHash) ->
-    case aec_chain:get_generation_by_hash(KBHash, forward) of
-        {ok, #{key_block := KB, micro_blocks := MBs}} ->
-            Header = aec_blocks:to_key_header(KB),
-            Height = aec_headers:height(Header),
-            Entries = collect_entries(MBs, KBHash, Height),
-            aerpc_log_store:insert_many(Entries),
-            aerpc_log_store:set_watermark(Height);
+%% A micro block extends the open generation; nothing to close, so
+%% nothing to index. A key block closes the previous one, which is the
+%% only point at which a generation's log set is final.
+maybe_index(#{block_hash := Hash} = Info, State) ->
+    case block_type(Hash, Info) of
+        key   -> index_closed_generation(Hash, State);
+        _Else -> ok
+    end;
+maybe_index(_Info, _State) ->
+    ok.
+
+block_type(_Hash, #{block_type := Type}) when Type =:= key; Type =:= micro ->
+    Type;
+block_type(Hash, _Info) ->
+    case aec_chain:get_header(Hash) of
+        {ok, Header} -> aec_headers:type(Header);
+        error        -> unknown
+    end.
+
+index_closed_generation(KeyHash, #state{started_at = Started}) ->
+    case aec_chain:get_header(KeyHash) of
+        {ok, Header} ->
+            PrevKey = aec_headers:prev_key_hash(Header),
+            Closed  = aec_headers:height(Header) - 1,
+            case Closed > Started of
+                true  -> index_generation(PrevKey, Closed);
+                false -> ok   %% below the floor; the walker owns it
+            end;
         error ->
             ok
+    end.
+
+index_generation(KBHash, Height) ->
+    case aec_chain:get_generation_by_hash(KBHash, forward) of
+        {ok, #{micro_blocks := MBs}} ->
+            aerpc_log_store:insert_many(collect_entries(MBs, KBHash, Height)),
+            aerpc_log_store:set_watermark(Height),
+            evict(Height);
+        error ->
+            ok
+    end.
+
+%% Slide the window forward, then tell the store how far back it can now
+%% honestly answer from.
+evict(Watermark) ->
+    case retention() of
+        0 ->
+            ok;
+        Keep ->
+            NewFloor = max(current_floor(), Watermark - Keep + 1),
+            case NewFloor > current_floor() of
+                true ->
+                    Removed = aerpc_log_store:evict_below(NewFloor),
+                    aerpc_log_store:set_floor(NewFloor),
+                    Removed > 0 andalso
+                        lager:debug("aerpc log index evicted ~p entries below "
+                                    "height ~p", [Removed, NewFloor]),
+                    ok;
+                false ->
+                    ok
+            end
+    end.
+
+current_floor() ->
+    case aerpc_log_store:floor_height() of
+        undefined -> 0;
+        H         -> H
     end.
 
 collect_entries(MBs, KBHash, Height) ->
@@ -126,7 +212,12 @@ collect_micros([MB | Rest], KBH, H, TxIdx, LogIdx, Acc) ->
 walk_txs([], _MBH, _KBH, _H, TxIdx, LogIdx, Acc) ->
     {Acc, TxIdx, LogIdx};
 walk_txs([STx | Rest], MBH, KBH, H, TxIdx, LogIdx, Acc) ->
-    case logs_for_tx(STx, KBH) of
+    %% The call object is read at the state of the micro block holding
+    %% the tx. Reading at the generation's key block -- which this did --
+    %% finds nothing, because the calls trie resets per generation and at
+    %% the key block that generation's calls do not exist yet. The index
+    %% was therefore recording zero logs for every block.
+    case logs_for_tx(STx, MBH) of
         [] ->
             walk_txs(Rest, MBH, KBH, H, TxIdx + 1, LogIdx, Acc);
         Logs ->
@@ -147,7 +238,7 @@ build_entries([{Address, Topics, Data} | Rest], MBH, KBH, H, TxIdx, LogIdx,
 
 %% Re-implemented locally rather than calling into aerpc_logs to avoid
 %% a circular dependency once aerpc_logs starts consulting the index.
-logs_for_tx(STx, BlockHash) ->
+logs_for_tx(STx, MicroBlockHash) ->
     try
         Tx = aetx_sign:tx(STx),
         {Type, _} = aetx:specialize_type(Tx),
@@ -162,7 +253,8 @@ logs_for_tx(STx, BlockHash) ->
                         contract_create_tx ->
                             {CB:contract_pubkey(CTx), CB:call_id(CTx)}
                     end,
-                case aec_chain:get_contract_call(ContractId, CallId, BlockHash) of
+                case aec_chain:get_contract_call(ContractId, CallId,
+                                                 MicroBlockHash) of
                     {ok, Call}     -> aect_call:log(Call);
                     {error, _Reas} -> []
                 end

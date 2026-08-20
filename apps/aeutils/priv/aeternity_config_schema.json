@@ -1551,6 +1551,29 @@
                             "description" : "Numeric chain id reported by eth_chainId and net_version. Set this explicitly: the built-in per-network values are placeholders that are not registered with any chain-id registry, and two networks sharing an id break replay protection in client tooling.",
                             "type" : "integer",
                             "minimum" : 0
+                        },
+                        "log_index" : {
+                            "description" : "Maintain an in-memory log index for eth_getLogs. Off by default: it walks each generation as it closes and holds a bounded amount of memory. With it off eth_getLogs still answers correctly, by walking the chain per request.",
+                            "type" : "boolean",
+                            "default" : false
+                        },
+                        "log_retention_blocks" : {
+                            "description" : "How many generations of logs the index keeps. Older entries are evicted and the index reports the narrowed range, so queries reaching below the window are served by the per-request walker instead of from an index that no longer holds them. 0 disables eviction and makes the index grow without bound.",
+                            "type" : "integer",
+                            "minimum" : 0,
+                            "default" : 10000
+                        },
+                        "max_filters" : {
+                            "description" : "Maximum number of live eth_newFilter / eth_newBlockFilter / eth_newPendingTransactionFilter registrations on this node. Allocating beyond it is rejected with error -32009.",
+                            "type" : "integer",
+                            "minimum" : 1,
+                            "default" : 128
+                        },
+                        "filter_ttl_seconds" : {
+                            "description" : "Idle timeout for a registered filter. Clients disconnect without calling eth_uninstallFilter, so an unpolled filter is dropped after this long and its id then answers -32000 filter not found.",
+                            "type" : "integer",
+                            "minimum" : 1,
+                            "default" : 300
                         }
                     }
                 }

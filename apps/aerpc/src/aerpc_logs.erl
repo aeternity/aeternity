@@ -60,12 +60,24 @@ dispatch_collect(#{block_scope := {range, From, To}} = Criteria) ->
 raw_logs_for_block(KeyBlockHash) when is_binary(KeyBlockHash) ->
     case aec_chain:get_generation_by_hash(KeyBlockHash, forward) of
         {ok, #{micro_blocks := MBs}} ->
-            lists:flatten(
-                [logs_for_tx(STx, KeyBlockHash)
-                 || MB <- MBs, STx <- aec_blocks:txs(MB)]);
+            lists:append([raw_logs_for_micro(MB) || MB <- MBs]);
         error ->
             []
     end.
+
+%% Each tx's call object has to be read at the state of the micro block
+%% that CONTAINS it, not at the generation's key block: the calls trie
+%% resets per generation, so at the key-block state that generation's own
+%% calls do not exist yet. Passing the key-block hash here made
+%% `logs_for_tx/2' return [] for every transaction, so every block's
+%% `logsBloom' came out empty however many logs the block really had.
+%% Same defect as the receipts, in the bloom builder.
+raw_logs_for_micro(MB) ->
+    MBHash = case aec_blocks:hash_internal_representation(MB) of
+                 {ok, H} -> H;
+                 _Other  -> <<>>
+             end,
+    lists:append([logs_for_tx(STx, MBHash) || STx <- aec_blocks:txs(MB)]).
 
 %% ===================================================================
 %% Filter parsing

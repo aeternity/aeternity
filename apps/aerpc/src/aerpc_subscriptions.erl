@@ -118,9 +118,18 @@ handle_cast({drop_owner, OwnerPid}, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({gproc_ps_event, top_changed, #{info := #{block_hash := KBHash}}},
-            State) ->
-    fanout(KBHash, State),
+handle_info({gproc_ps_event, top_changed, #{info := Info}}, State)
+  when is_map(Info) ->
+    %% `top_changed' carries the new TOP block hash, which is a micro
+    %% block whenever one is mined. Everything below is keyed by the
+    %% generation's KEY block, so feeding the raw hash through made
+    %% `newHeads' emit `{}' and pointed the log fan-out at a hash
+    %% `eth_getLogs' does not accept -- the third instance of the same
+    %% micro-vs-key confusion as the receipts and the address index.
+    case generation_hash(Info) of
+        {ok, KBHash} -> fanout(KBHash, State);
+        error        -> ok
+    end,
     {noreply, State};
 handle_info({gproc_ps_event, top_changed, _Other}, State) ->
     %% Event shape changed across protocols; ignore rather than crash.
@@ -183,6 +192,34 @@ maybe_demonitor(Pid, #state{monitors = M, by_owner = O} = State) ->
         {Ref, false} ->
             erlang:demonitor(Ref, [flush]),
             State#state{monitors = maps:remove(Pid, M)}
+    end.
+
+%% Resolve the event's block hash to its generation's key block. A key
+%% block opens a generation with no micro blocks yet, so the interesting
+%% notification is the one it CLOSES -- which is also the generation a
+%% micro-block event belongs to, so both types resolve through
+%% `prev_key_hash'.
+generation_hash(#{block_hash := Hash} = Info) ->
+    case block_type(Hash, Info) of
+        micro   -> prev_key(Hash);
+        key     -> prev_key(Hash);
+        unknown -> error
+    end;
+generation_hash(_Other) ->
+    error.
+
+block_type(_Hash, #{block_type := Type}) when Type =:= key; Type =:= micro ->
+    Type;
+block_type(Hash, _Info) ->
+    case aec_chain:get_header(Hash) of
+        {ok, Header} -> aec_headers:type(Header);
+        error        -> unknown
+    end.
+
+prev_key(Hash) ->
+    case aec_chain:get_header(Hash) of
+        {ok, Header} -> {ok, aec_headers:prev_key_hash(Header)};
+        error        -> error
     end.
 
 fanout(_KBHash, #state{by_id = Subs}) when map_size(Subs) =:= 0 ->

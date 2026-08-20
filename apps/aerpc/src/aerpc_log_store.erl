@@ -20,6 +20,8 @@
          insert/1,
          insert_many/1,
          select_range/3,
+         evict_below/1,
+         size/0,
          floor_height/0,
          watermark/0,
          set_floor/1,
@@ -116,6 +118,38 @@ select_one_address(Addr, From, To) ->
                   {'=<', '$1', To}}],
              ['$2']}],
     ets:select(?IDX, Spec).
+
+%% @doc Drop every entry below `Height'. Returns how many went.
+%%
+%% The caller must raise the floor to match, or `indexed/1' keeps
+%% claiming coverage for heights that are no longer here and
+%% `eth_getLogs' answers from a window with a hole in it -- a short list
+%% indistinguishable from a complete one. `aerpc_log_indexer:evict/1'
+%% does the two together for that reason.
+%%
+%% Height is the second element of the key rather than the first, so
+%% this is a full scan of the table. It runs once per closed generation
+%% and only when the window has actually moved, which is the cheapest
+%% place to pay it.
+-spec evict_below(non_neg_integer()) -> non_neg_integer().
+evict_below(Height) when is_integer(Height), Height >= 0 ->
+    case ets:info(?IDX) of
+        undefined ->
+            0;
+        _Info ->
+            Spec = [{{'$1', '_'},
+                     [{'<', {element, 2, '$1'}, Height}],
+                     [true]}],
+            ets:select_delete(?IDX, Spec)
+    end.
+
+%% @doc Number of indexed log entries.
+-spec size() -> non_neg_integer().
+size() ->
+    case ets:info(?IDX) of
+        undefined -> 0;
+        Info      -> proplists:get_value(size, Info, 0)
+    end.
 
 %% Both readers tolerate the tables being absent. `aerpc_log_indexer' is
 %% not started for the public-read surface, so nothing has called

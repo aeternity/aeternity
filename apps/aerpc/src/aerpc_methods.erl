@@ -231,35 +231,30 @@ dispatch_method(<<"eth_getLogs">>, [Filter]) when is_map(Filter) ->
 dispatch_method(<<"eth_getLogs">>, _Params) ->
     {error, -32602, <<"Invalid params">>};
 
+%% The filter family. Ids are hex QUANTITY strings allocated by
+%% aerpc_filter_registry, which also owns the idle-TTL expiry and the
+%% per-node cap; an id it does not hold comes back as geth's
+%% `-32000 filter not found', which clients read as "re-create it".
+dispatch_method(<<"eth_getFilterChanges">>, [Id]) when is_binary(Id) ->
+    aerpc_filter_registry:changes(Id);
 dispatch_method(<<"eth_getFilterChanges">>, _Params) ->
-    %% Requires a server-side filter registry (aerpc_filter_registry),
-    %% deferred to v1.5 alongside eth_newFilter / eth_newBlockFilter /
-    %% eth_newPendingTransactionFilter / eth_uninstallFilter.
-    {error, -32004, <<"Filter registry not yet implemented (v1.5)">>};
+    {error, -32602, <<"Invalid params">>};
 
+dispatch_method(<<"eth_getFilterLogs">>, [Id]) when is_binary(Id) ->
+    aerpc_filter_registry:logs(Id);
 dispatch_method(<<"eth_getFilterLogs">>, _Params) ->
-    %% Same gating as eth_getFilterChanges: needs the filter registry.
-    {error, -32004, <<"Filter registry not yet implemented (v1.5)">>};
+    {error, -32602, <<"Invalid params">>};
 
 dispatch_method(<<"eth_newBlockFilter">>, _Params) ->
-    %% Allocates a server-side filter that fires on every new key-block.
-    %% Needs the filter registry (aerpc_filter_registry); deferred to v1.5
-    %% alongside the rest of the filter family.
-    {error, -32004, <<"Filter registry not yet implemented (v1.5)">>};
+    aerpc_filter_registry:new_block_filter();
 
+dispatch_method(<<"eth_newFilter">>, [Criteria]) when is_map(Criteria) ->
+    aerpc_filter_registry:new_log_filter(Criteria);
 dispatch_method(<<"eth_newFilter">>, _Params) ->
-    %% Allocates a server-side log filter from the supplied criteria
-    %% (address / topics / fromBlock / toBlock). Needs the filter registry
-    %% (aerpc_filter_registry) for state + idle-TTL eviction; deferred to
-    %% v1.5 alongside the rest of the filter family.
-    {error, -32004, <<"Filter registry not yet implemented (v1.5)">>};
+    {error, -32602, <<"Invalid params">>};
 
 dispatch_method(<<"eth_newPendingTransactionFilter">>, _Params) ->
-    %% Allocates a server-side filter that fires on every new mempool
-    %% insertion (aec_events:tx_received). Needs the filter registry
-    %% (aerpc_filter_registry); deferred to v1.5 alongside the rest of
-    %% the filter family.
-    {error, -32004, <<"Filter registry not yet implemented (v1.5)">>};
+    aerpc_filter_registry:new_pending_tx_filter();
 
 dispatch_method(<<"eth_subscribe">>, _Params) ->
     %% Subscriptions require an open WS connection so the registry can
@@ -272,12 +267,12 @@ dispatch_method(<<"eth_unsubscribe">>, _Params) ->
     {error, -32004,
      <<"Subscriptions require the WebSocket transport (/v3/rpc/ws)">>};
 
+dispatch_method(<<"eth_uninstallFilter">>, [Id]) when is_binary(Id) ->
+    %% Idempotent by eth convention: an id we do not hold is `false',
+    %% not an error.
+    aerpc_filter_registry:uninstall(Id);
 dispatch_method(<<"eth_uninstallFilter">>, _Params) ->
-    %% Releases a previously-registered filter (id passed as a hex
-    %% QUANTITY). Trivial counterpart to the new*Filter callers; needs
-    %% the filter registry (aerpc_filter_registry); deferred to v1.5
-    %% alongside the rest of the filter family.
-    {error, -32004, <<"Filter registry not yet implemented (v1.5)">>};
+    {error, -32602, <<"Invalid params">>};
 
 dispatch_method(<<"web3_sha3">>, [HexIn]) when is_binary(HexIn) ->
     %% Keccak-256 of the supplied bytes. Uses the same `sha3' dep that

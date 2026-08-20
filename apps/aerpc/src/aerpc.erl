@@ -9,15 +9,37 @@
 %%%-------------------------------------------------------------------
 -module(aerpc).
 
--export([dispatch/1, max_batch_size/0, enable/0]).
+-export([dispatch/1, max_batch_size/0, enable/0, log_index_enabled/0]).
 
 %% @doc Bring up the parts of this app that only an enabled endpoint
 %% needs. Called by `aehttp_app' when it mounts the routes, so the cost
 %% follows the operator switch rather than mere installation of the app.
 %% Idempotent.
+%%
+%% The address index and the filter registry follow the endpoint switch;
+%% the log index takes a second opt-in (`http > rpc > log_index') because
+%% it is the only one that does per-key-block chain work and holds a real
+%% amount of memory. Without it `eth_getLogs' still answers, from the
+%% inline walker.
 -spec enable() -> ok | {error, term()}.
 enable() ->
-    aerpc_sup:ensure_addr_index().
+    Results = [aerpc_sup:ensure_addr_index(),
+               aerpc_sup:ensure_filter_registry()
+               | maybe_log_indexer()],
+    case [E || {error, _} = E <- Results] of
+        []          -> ok;
+        [First | _] -> First
+    end.
+
+maybe_log_indexer() ->
+    case log_index_enabled() of
+        true  -> [aerpc_sup:ensure_log_indexer()];
+        false -> []
+    end.
+
+-spec log_index_enabled() -> boolean().
+log_index_enabled() ->
+    application:get_env(aerpc, log_index, false) =:= true.
 
 -define(JSONRPC_VSN, <<"2.0">>).
 
