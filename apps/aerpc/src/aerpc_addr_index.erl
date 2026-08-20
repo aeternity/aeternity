@@ -17,6 +17,27 @@
 %%% as `top_changed' announces it -- see `index_new_top/1', which is
 %%% where the block type matters.
 %%%
+%%% == Why the incremental half reads the state delta ==
+%%%
+%%% Reading transaction fields is not enough and cannot be made enough.
+%%% A `spend_tx' names its recipient, but `Chain.spend' from inside a
+%%% contract call names nobody, and `Chain.create' produces a contract
+%%% that appears in no field of any transaction type. Both change the
+%%% tries all the same, and both were measured missing: 5 of 13 pubkeys
+%%% on a lab chain were unresolvable, and every one of them answered
+%%% `0x0'/`0x' on the wire -- a well-formed wrong answer. Restarting the
+%%% node repaired it, because the backfill reads the tries, and fresh
+%%% traffic drifted again.
+%%%
+%%% So the incremental path reads the same source the backfill trusts:
+%%% every pubkey whose accounts- or contracts-trie entry CHANGED between
+%%% the parent state and the new one. That is blind to the mechanism --
+%%% it does not care whether a transaction field, a primop or a protocol
+%%% upgrade put the entry there -- and it is bounded by what the block
+%%% actually touched, because the diff prunes any subtree whose Merkle
+%%% node is unchanged. The tx-field pass is kept in front of it: it is
+%%% nearly free, and it still covers a block whose state has gone.
+%%%
 %%% == The invariant that matters ==
 %%%
 %%% Ethereum semantics say an unknown address has balance zero. That is
@@ -75,7 +96,20 @@
 %% Retry delay when the chain is not up yet at start.
 -define(RETRY_MS, 1000).
 
--record(state, {phase :: pending | accounts | contracts | complete}).
+%% Ceiling on trie nodes visited by one state delta. A delta runs to
+%% completion inside this gen_server without yielding, so the ceiling is
+%% about responsiveness, not about correctness: a generation is bounded
+%% by the block gas limit and lands nowhere near it, but a protocol
+%% upgrade that rewrites accounts in bulk would. Exceeding it hands the
+%% work to the backfill, which is chunked and yields -- never to a
+%% partial answer, which is the defect this module exists to prevent.
+-define(DEFAULT_DELTA_MAX_NODES, 50000).
+
+-record(state, {phase  :: pending | accounts | contracts | complete,
+                %% A delta overflowed while a walk was already in
+                %% flight, so that walk's snapshot is behind: go round
+                %% again rather than declaring `complete'.
+                resync = false :: boolean()}).
 
 %% ===================================================================
 %% Public API
@@ -125,11 +159,19 @@ index_pubkey(Pubkey) when is_binary(Pubkey) ->
 rebuild() ->
     gen_server:call(?MODULE, rebuild).
 
+%% @doc `deltas' / `delta_misses' are what makes the incremental half
+%% observable. A miss is a block whose parent or own state could not be
+%% read, so its delta never ran; on a micro block the next key block's
+%% generation-wide delta covers it again, on a key block it is a real
+%% gap that only `rebuild/0' closes. Non-zero is a signal, not noise.
 -spec status() -> map().
 status() ->
-    #{backfill   => backfill_state(),
-      indexed    => counter(indexed),
-      collisions => counter(collisions)}.
+    #{backfill     => backfill_state(),
+      indexed      => counter(indexed),
+      collisions   => counter(collisions),
+      deltas       => counter(deltas),
+      delta_misses => counter(delta_misses),
+      resyncs      => counter(resyncs)}.
 
 %% ===================================================================
 %% gen_server callbacks
@@ -192,6 +234,11 @@ handle_info({backfill_contracts, Pubkeys}, State) ->
         {more, Rest} ->
             self() ! {backfill_contracts, Rest},
             {noreply, State};
+        done when State#state.resync ->
+            %% Do not claim `complete' on a snapshot we already know is
+            %% stale -- that is the one moment a miss would turn from
+            %% `incomplete' into a confident `unknown'.
+            {noreply, start_resync(State#state{resync = false})};
         done ->
             set_backfill(complete),
             lager:info("aerpc address index backfill complete: ~p entries, "
@@ -201,8 +248,10 @@ handle_info({backfill_contracts, Pubkeys}, State) ->
     end;
 handle_info({gproc_ps_event, top_changed, #{info := Info}}, State)
   when is_map(Info) ->
-    index_new_top(Info),
-    {noreply, State};
+    case index_new_top(Info) of
+        resync -> {noreply, request_resync(State)};
+        ok     -> {noreply, State}
+    end;
 handle_info({gproc_ps_event, top_changed, _Other}, State) ->
     {noreply, State};
 handle_info(_Msg, State) ->
@@ -270,18 +319,23 @@ contract_pubkeys(Trees) ->
 %%
 %% So dispatch on the block type the event already tells us:
 %%
-%%   micro -> index that micro block's own transactions. Precise, and
-%%            O(txs in this block) rather than O(generation) per event.
-%%   key   -> index the beneficiary, and sweep the generation this key
-%%            block just CLOSED (its prev_key_hash). The sweep is the
-%%            catch-up net: a reorg or a sync burst advances the top in
-%%            one event and the intervening micro blocks never raise one
-%%            of their own, so without it those txs are missed until a
-%%            rebuild. Re-inserting is idempotent and bounded by the
-%%            block gas limit, so the sweep is cheap.
+%%   micro -> this micro block's own transaction fields, then the state
+%%            delta from its parent. Precise, and O(what this block
+%%            changed) rather than O(generation) per event.
+%%   key   -> the beneficiary, the transaction fields of the generation
+%%            this key block just CLOSED, and the state delta across
+%%            that whole generation -- from the previous key block's
+%%            state to this key block's. Both are the catch-up net: a
+%%            reorg or a sync burst advances the top in one event and
+%%            the intervening micro blocks never raise one of their own,
+%%            so without it their changes are missed until a rebuild.
+%%            One diff covers the generation because trie entries are
+%%            only ever added or updated, never removed, so the net
+%%            difference between the two states is the union of every
+%%            change in between. Re-inserting is idempotent.
 index_new_top(#{block_hash := Hash} = Info) ->
     case block_type(Hash, Info) of
-        micro   -> index_micro_block(Hash);
+        micro   -> index_micro_block(Hash, Info);
         key     -> index_key_block(Hash);
         unknown -> ok
     end;
@@ -298,22 +352,35 @@ block_type(Hash, _Info) ->
         error        -> unknown
     end.
 
-index_micro_block(Hash) ->
+index_micro_block(Hash, Info) ->
     case aec_chain:get_block(Hash) of
         {ok, Block} ->
             [index_tx(STx) || STx <- aec_blocks:txs(Block)],
             ok;
         error ->
             ok
-    end.
+    end,
+    index_state_delta(parent_hash(Hash, Info), Hash).
 
 index_key_block(Hash) ->
     case aec_chain:get_header(Hash) of
         {ok, Header} ->
             catch do_insert(aec_headers:beneficiary(Header)),
-            sweep_generation(aec_headers:prev_key_hash(Header));
+            PrevKeyHash = aec_headers:prev_key_hash(Header),
+            sweep_generation(PrevKeyHash),
+            index_state_delta(PrevKeyHash, Hash);
         error ->
             ok
+    end.
+
+%% The event already carries the parent; the header read is only there so
+%% a change in the event shape costs a lookup rather than the delta.
+parent_hash(_Hash, #{prev_hash := Prev}) when is_binary(Prev) ->
+    Prev;
+parent_hash(Hash, _Info) ->
+    case aec_chain:get_header(Hash) of
+        {ok, Header} -> aec_headers:prev_hash(Header);
+        error        -> undefined
     end.
 
 %% Re-walk a closed generation. Every insert is idempotent, so this only
@@ -358,6 +425,171 @@ insert_from_id(Tx, Accessor) ->
     end.
 
 %% ===================================================================
+%% State delta
+%%
+%% Index every pubkey whose accounts- or contracts-trie entry differs
+%% between two states. Both tries are Merkle Patricia tries over the same
+%% node store, so the diff is a one-sided walk of the NEW trie that stops
+%% descending the moment `has_node/3' says the old trie holds the very
+%% same node at the very same path: an unchanged subtree costs one
+%% comparison whatever its size. What is left is exactly the paths the
+%% block touched.
+%%
+%% Two properties make this cheap enough to run per block:
+%%
+%%   * a path of 256 bits or more already names its pubkey, so the walk
+%%     inserts it and stops. A contract call that wrote ten thousand
+%%     store slots is one insert, not ten thousand -- the store lives in
+%%     the contracts trie under the contract's own 32-byte prefix.
+%%   * `unfold/3' hands back child nodes without decoding them, so a
+%%     pruned subtree is never read from the store at all.
+%% ===================================================================
+
+%% @returns ok when the delta ran or was genuinely empty, `resync' when
+%% it was too large to run here. Never a partial result.
+index_state_delta(FromHash, ToHash) when is_binary(FromHash),
+                                         is_binary(ToHash) ->
+    case {partial_trees(FromHash), partial_trees(ToHash)} of
+        {{ok, Old}, {ok, New}} ->
+            %% Either trie overflowing means the same thing, and both
+            %% have to be normalised here: `handle_info/2' acts on
+            %% `ok | resync' and nothing else.
+            case {delta_trie(accounts, New, Old),
+                  delta_trie(contracts, New, Old)} of
+                {ok, ok} -> ok;
+                _Overflowed -> resync
+            end;
+        _Unavailable ->
+            %% The state is gone or not written yet, so this block's
+            %% changes were not read. Count it: on a micro block the next
+            %% key block re-diffs the whole generation and closes it, on
+            %% a key block it stays open until a rebuild, and either way
+            %% a silent zero is what this module exists to prevent.
+            bump(delta_misses),
+            ok
+    end;
+index_state_delta(_From, _To) ->
+    bump(delta_misses),
+    ok.
+
+partial_trees(Hash) ->
+    try aec_chain:get_block_state_partial(Hash, [accounts, contracts])
+    catch _:_ -> error
+    end.
+
+delta_trie(Which, NewTrees, OldTrees) ->
+    try
+        {NewRoot, NewTree} = trie(Which, NewTrees),
+        {OldRoot, OldTree} = trie(Which, OldTrees),
+        case NewRoot =:= OldRoot of
+            true ->
+                ok;
+            false ->
+                Roots = aeu_mp_trees:unfold(<<>>, <<>>, NewTree),
+                case walk_delta(Roots, NewTree, OldTree, delta_max_nodes()) of
+                    {ok, _Left} -> bump(deltas), ok;
+                    overflow    -> overflow
+                end
+        end
+    catch Class:Reason:St ->
+        %% Never take the index process down over a delta: a restart
+        %% would empty the table and answer `incomplete' for every
+        %% address until the walk finished.
+        lager:error("aerpc address index ~p delta failed: ~p:~p ~p",
+                    [Which, Class, Reason, St]),
+        bump(delta_misses),
+        ok
+    end.
+
+%% Rebuild the bare Merkle trie from the accessors each wrapper exports,
+%% rather than reaching into its record.
+trie(accounts, Trees) ->
+    T = aec_trees:accounts(Trees),
+    mk_trie(aec_accounts_trees:root_hash(T), aec_accounts_trees:db(T));
+trie(contracts, Trees) ->
+    T = aec_trees:contracts(Trees),
+    mk_trie(aect_state_tree:root_hash(T), aect_state_tree:db(T)).
+
+mk_trie({error, empty}, _DB)  -> {empty, aeu_mtrees:empty()};
+mk_trie({ok, Hash}, {ok, DB}) -> {Hash, aeu_mtrees:new_with_backend(Hash, DB)}.
+
+walk_delta([], _New, _Old, Budget) ->
+    {ok, Budget};
+walk_delta(_Items, _New, _Old, Budget) when Budget =< 0 ->
+    overflow;
+walk_delta([{leaf, Path} | T], New, Old, Budget) ->
+    _ = insert_path(Path),
+    walk_delta(T, New, Old, Budget - 1);
+walk_delta([{node, Path, Node} | T], New, Old, Budget) ->
+    case insert_path(Path) of
+        indexed ->
+            walk_delta(T, New, Old, Budget - 1);
+        deeper ->
+            case aeu_mp_trees:has_node(Path, Node, Old) of
+                yes ->
+                    %% Same node, same path: the whole subtree under it
+                    %% is byte-identical and can teach us nothing.
+                    walk_delta(T, New, Old, Budget - 1);
+                _NoOrMaybe ->
+                    Children = aeu_mp_trees:unfold(Path, Node, New),
+                    case walk_delta(Children, New, Old, Budget - 1) of
+                        overflow    -> overflow;
+                        {ok, Left} -> walk_delta(T, New, Old, Left)
+                    end
+            end
+    end.
+
+%% A trie path is the key's own bits, so its first 256 name the pubkey --
+%% for a bare accounts or contracts entry, and for every store key under
+%% that contract, since `compute_contract_store_id/1' prefixes the store
+%% with the contract's 32 bytes.
+%%
+%% Matching on bits rather than whole bytes is load-bearing, not tidiness.
+%% `unfold/3' follows an extension node before it emits anything, so the
+%% node at exactly 64 nibbles is never handed back as an item of its own:
+%% a contract's children arrive at 65 nibbles, which is not byte-aligned.
+%% Requiring a whole binary here would let a contract whose own entry
+%% changed while its store did not slip past, because every child would
+%% then be pruned as unchanged.
+insert_path(Path) when is_bitstring(Path), bit_size(Path) >= 256 ->
+    <<Pubkey:32/binary, _Rest/bitstring>> = Path,
+    _ = do_insert(Pubkey),
+    indexed;
+insert_path(_Shorter) ->
+    deeper.
+
+delta_max_nodes() ->
+    case application:get_env(aerpc, addr_delta_max_nodes,
+                             ?DEFAULT_DELTA_MAX_NODES) of
+        N when is_integer(N), N > 0 -> N;
+        _Other                      -> ?DEFAULT_DELTA_MAX_NODES
+    end.
+
+%% ===================================================================
+%% Resync
+%%
+%% A re-walk that KEEPS what is already indexed. Trie entries are only
+%% added or updated, never removed, so an existing mapping cannot become
+%% wrong -- and keeping it means the addresses we already know keep
+%% answering while the walk catches up, instead of every address in the
+%% index answering `incomplete' for the duration. `rebuild/0' is the
+%% operator's hammer and still drops everything.
+%% ===================================================================
+
+request_resync(#state{phase = complete} = State) ->
+    start_resync(State);
+request_resync(State) ->
+    State#state{resync = true}.
+
+start_resync(State) ->
+    bump(resyncs),
+    lager:warning("aerpc address index re-walking the tries: a state "
+                  "delta exceeded ~p nodes", [delta_max_nodes()]),
+    set_backfill(running),
+    self() ! start_backfill,
+    State#state{phase = pending}.
+
+%% ===================================================================
 %% Store
 %% ===================================================================
 
@@ -389,7 +621,8 @@ hex(Bin) -> binary:encode_hex(Bin).
 %% ===================================================================
 
 reset_meta() ->
-    ets:insert(?META, [{backfill, pending}, {indexed, 0}, {collisions, 0}]),
+    ets:insert(?META, [{backfill, pending}, {indexed, 0}, {collisions, 0},
+                       {deltas, 0}, {delta_misses, 0}, {resyncs, 0}]),
     ok.
 
 set_backfill(Value) ->
