@@ -7,18 +7,22 @@
 %%%
 %%% Three subscription kinds:
 %%%
-%%%   * `newHeads' -- fires once per new generation; payload is the
-%%%     eth-shaped block (`eth_getBlockByNumber' result with full-tx
-%%%     hashes only).
-%%%   * `logs'     -- fires once per matching log inside a new
+%%%   * `newHeads' -- fires ONCE per generation, when the next key block
+%%%     closes it; payload is the eth-shaped block
+%%%     (`eth_getBlockByNumber' result with full-tx hashes only).
+%%%   * `logs'     -- fires once per matching log inside a newly closed
 %%%     generation; payload is the same map shape as one element of
 %%%     `eth_getLogs'.
 %%%   * `newPendingTransactions' -- fires once per mempool arrival;
 %%%     payload is the tx hash, or the full eth transaction object when
 %%%     the client passed `true' as the second parameter. Same
-%%%     `aec_events:tx_received' stream `eth_newPendingTransactionFilter'
-%%%     polls, so the push and poll halves cannot disagree about what
-%%%     "pending" means.
+%%%     `tx_created' / `tx_received' stream
+%%%     `eth_newPendingTransactionFilter' polls, so the push and poll
+%%%     halves cannot disagree about what "pending" means.
+%%%
+%%% "Once per generation" is load-bearing and is explained at
+%%% `maybe_announce/2': the naive reading of `top_changed' rebroadcasts
+%%% a whole generation on every micro block under it.
 %%%
 %%% Unlike the two chain-derived kinds, a mempool arrival cannot be
 %%% recovered from chain state, so a client that misses a frame has
@@ -64,7 +68,13 @@
     next_id   = 1                 :: pos_integer(),
     by_id     = #{}               :: #{binary() => #sub{}},
     by_owner  = #{}               :: #{pid()   => [binary()]},
-    monitors  = #{}               :: #{pid()   => reference()}
+    monitors  = #{}               :: #{pid()   => reference()},
+    %% Last generation announced to newHeads/logs subscribers. `top_changed'
+    %% fires once per micro block as well as per key block and every one of
+    %% them resolves to the same generation, so without this the whole
+    %% generation is rebroadcast on each -- measured at 41 frames for 15
+    %% generations, one of them six times.
+    last_gen                      :: undefined | binary()
 }).
 
 %% ===================================================================
@@ -139,12 +149,16 @@ init([]) ->
     try aec_events:subscribe(top_changed)
     catch _:_ -> ok
     end,
-    %% The mempool stream, for `newPendingTransactions'. The handler
-    %% returns immediately when nothing is subscribed to it, so a socket
+    %% The mempool stream, for `newPendingTransactions'. BOTH events:
+    %% `aec_tx_pool:push/1' defaults to `tx_created', which is what the
+    %% node's own POST /v3/transactions uses and therefore what every
+    %% SDK, wallet and dapp produces. `tx_received' is only gossip from a
+    %% peer or a fork re-add. Listening to `tx_received' alone meant a
+    %% single-node deployment saw nothing at all. The handler returns
+    %% immediately when nothing is subscribed to the kind, so a socket
     %% that only asked for newHeads costs nothing here.
-    try aec_events:subscribe(tx_received)
-    catch _:_ -> ok
-    end,
+    [try aec_events:subscribe(E) catch _:_ -> ok end
+     || E <- [tx_created, tx_received]],
     {ok, #state{}}.
 
 handle_call({subscribe, OwnerPid, Kind, Criteria}, _From, State) ->
@@ -177,24 +191,16 @@ handle_cast(_Msg, State) ->
 
 handle_info({gproc_ps_event, top_changed, #{info := Info}}, State)
   when is_map(Info) ->
-    %% `top_changed' carries the new TOP block hash, which is a micro
-    %% block whenever one is mined. Everything below is keyed by the
-    %% generation's KEY block, so feeding the raw hash through made
-    %% `newHeads' emit `{}' and pointed the log fan-out at a hash
-    %% `eth_getLogs' does not accept -- the third instance of the same
-    %% micro-vs-key confusion as the receipts and the address index.
-    case generation_hash(Info) of
-        {ok, KBHash} -> fanout(KBHash, State);
-        error        -> ok
-    end,
-    {noreply, State};
+    {noreply, maybe_announce(Info, State)};
 handle_info({gproc_ps_event, top_changed, _Other}, State) ->
     %% Event shape changed across protocols; ignore rather than crash.
     {noreply, State};
-handle_info({gproc_ps_event, tx_received, #{info := SignedTx}}, State) ->
+handle_info({gproc_ps_event, Event, #{info := SignedTx}}, State)
+  when Event =:= tx_created; Event =:= tx_received ->
     fanout_pending(SignedTx, State),
     {noreply, State};
-handle_info({gproc_ps_event, tx_received, _Other}, State) ->
+handle_info({gproc_ps_event, Event, _Other}, State)
+  when Event =:= tx_created; Event =:= tx_received ->
     {noreply, State};
 handle_info({'DOWN', _MRef, process, Pid, _Reason}, State) ->
     State1 = drop_all_for(Pid, State),
@@ -256,19 +262,48 @@ maybe_demonitor(Pid, #state{monitors = M, by_owner = O} = State) ->
             State#state{monitors = maps:remove(Pid, M)}
     end.
 
-%% Resolve the event's block hash to its generation's key block. A key
-%% block opens a generation with no micro blocks yet, so the interesting
-%% notification is the one it CLOSES -- which is also the generation a
-%% micro-block event belongs to, so both types resolve through
-%% `prev_key_hash'.
-generation_hash(#{block_hash := Hash} = Info) ->
+%% == Announcing a generation exactly once ==
+%%
+%% `top_changed' fires for every new top block, which is once per micro
+%% block as well as once per key block, and every one of those resolves
+%% to the same generation. Fanning out on each meant re-emitting the
+%% whole generation each time: measured on the wire as 41 newHeads frames
+%% for 15 generations and every log delivered three times, byte-identical.
+%% Anything stateful downstream double-counts against that.
+%%
+%% A generation's content is only final once the NEXT key block closes
+%% it, so that is when it is announced -- the same rule
+%% `aerpc_log_indexer' follows, for the same reason. Micro-block events
+%% are ignored: the generation they extend is still open, and announcing
+%% it early would mean either re-announcing it later (the defect) or
+%% dropping the logs of every micro block that arrives after the first
+%% (worse).
+%%
+%% The consequence is real and worth stating: a head or a log reaches a
+%% subscriber one generation after the block that produced it, rather
+%% than immediately and then again.
+%%
+%% The `last_gen' guard on top makes a repeated key-block event -- a
+%% resend, or the same top re-published -- a no-op. A reorg carries a
+%% different `prev_key_hash', so it still announces.
+maybe_announce(#{block_hash := Hash} = Info, State) ->
     case block_type(Hash, Info) of
-        micro   -> prev_key(Hash);
-        key     -> prev_key(Hash);
-        unknown -> error
+        key   -> announce_closed_generation(Hash, State);
+        _Else -> State
     end;
-generation_hash(_Other) ->
-    error.
+maybe_announce(_Info, State) ->
+    State.
+
+announce_closed_generation(KeyHash, #state{last_gen = Last} = State) ->
+    case prev_key(KeyHash) of
+        {ok, Last} ->
+            State;
+        {ok, KBHash} ->
+            fanout(KBHash, State),
+            State#state{last_gen = KBHash};
+        error ->
+            State
+    end.
 
 block_type(_Hash, #{block_type := Type}) when Type =:= key; Type =:= micro ->
     Type;

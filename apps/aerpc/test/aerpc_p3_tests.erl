@@ -24,6 +24,8 @@
 -define(KEY_HASH,   <<71:32/unit:8>>).
 -define(MICRO_HASH, <<72:32/unit:8>>).
 -define(PREV_KEY,   <<73:32/unit:8>>).
+-define(KEY_HASH2,  <<76:32/unit:8>>).
+-define(PREV_KEY2,  <<77:32/unit:8>>).
 -define(SENDER,     <<74:8, 0:248>>).
 -define(RECIPIENT,  <<75:8, 0:248>>).
 -define(TOP_HEIGHT, 20).
@@ -49,6 +51,8 @@ registry_test_() ->
                  fun block_filter_cursor/0} end,
       fun(_) -> {"a pending-tx filter drains once and its buffer is capped",
                  fun pending_tx_filter/0} end,
+      fun(_) -> {"a locally submitted transaction reaches a pending filter",
+                 fun pending_filter_tx_created/0} end,
       fun(_) -> {"the filter cap is enforced",
                  fun filter_cap/0} end,
       fun(_) -> {"an idle filter is swept",
@@ -105,6 +109,17 @@ pending_tx_filter() ->
     [publish_tx(spend_tx(N)) || N <- lists:seq(1, 1100)],
     {ok, Drained} = aerpc_filter_registry:changes(Id),
     ?assertEqual(1000, length(Drained)).
+
+pending_filter_tx_created() ->
+    %% Same defect, poll half: the filter was subscribed to tx_received
+    %% only, so Lab's "drained 2 hashes" could not have come from that
+    %% run's own locally-pushed workload.
+    {ok, Id} = aerpc_filter_registry:new_pending_tx_filter(),
+    STx = spend_tx(21),
+    publish_tx(tx_created, STx),
+    _ = aerpc_filter_registry:status(),   %% flush the info message
+    {ok, Hashes} = aerpc_filter_registry:changes(Id),
+    ?assertEqual([aerpc_encoding:format_tx_hash(aetx_sign:hash(STx))], Hashes).
 
 filter_cap() ->
     application:set_env(aerpc, max_filters, 2),
@@ -168,26 +183,24 @@ subscriptions_test_() ->
     {foreach,
      fun setup_subs/0,
      fun teardown_subs/1,
-     [fun(_) -> {"a micro-block event notifies on the GENERATION key "
-                 "block, not the micro-block hash",
-                 fun micro_event_uses_generation_hash/0} end,
+     [fun(_) -> {"a micro-block event does not announce the still-open "
+                 "generation",
+                 fun micro_event_does_not_announce_open_generation/0} end,
+      fun(_) -> {"a generation is announced exactly once, however many "
+                 "micro blocks it had",
+                 fun generation_announced_exactly_once/0} end,
       fun(_) -> {"a key-block event notifies on the generation it closed",
                  fun key_event_uses_closed_generation/0} end,
       fun(_) -> {"with no subscribers nothing is built at all",
                  fun no_subscribers_no_work/0} end]}.
 
-micro_event_uses_generation_hash() ->
-    {ok, SubId} = aerpc_subscriptions:subscribe(self(), newHeads, undefined),
-    publish_top(?MICRO_HASH, micro),
-    %% Before the fix this arrived as `#{}': aerpc_block:by_hash/2 was
-    %% handed the micro-block hash, and a generation lookup on that
-    %% returns nothing.
-    receive
-        {aerpc_notify, SubId, Block} ->
-            ?assertEqual(?PREV_KEY, maps:get(marker, Block))
-    after 2000 ->
-        ?assert(false)
-    end.
+micro_event_does_not_announce_open_generation() ->
+    {ok, _SubId} = aerpc_subscriptions:subscribe(self(), newHeads, undefined),
+    %% A micro block extends a generation that is still open; announcing
+    %% it here is what produced 41 frames for 15 generations on the wire,
+    %% because every micro block under a generation re-announced it whole.
+    [publish_top(?MICRO_HASH, micro) || _ <- lists:seq(1, 4)],
+    ?assertEqual(0, frames_received()).
 
 key_event_uses_closed_generation() ->
     {ok, SubId} = aerpc_subscriptions:subscribe(self(), newHeads, undefined),
@@ -201,8 +214,24 @@ key_event_uses_closed_generation() ->
         ?assert(false)
     end.
 
+%% The property Lab's harness now asserts, at the source: count the
+%% deliveries, not just their shape.
+generation_announced_exactly_once() ->
+    {ok, _SubId} = aerpc_subscriptions:subscribe(self(), newHeads, undefined),
+    %% A realistic generation: several micro blocks, then the key block
+    %% that closes it.
+    [publish_top(?MICRO_HASH, micro) || _ <- lists:seq(1, 3)],
+    publish_top(?KEY_HASH, key),
+    ?assertEqual(1, frames_received()),
+    %% A repeated key-block event for the same generation is a no-op.
+    publish_top(?KEY_HASH, key),
+    ?assertEqual(0, frames_received()),
+    %% A different generation still gets its own frame.
+    publish_top(?KEY_HASH2, key),
+    ?assertEqual(1, frames_received()).
+
 no_subscribers_no_work() ->
-    publish_top(?MICRO_HASH, micro),
+    publish_top(?KEY_HASH, key),
     ?assertEqual(0, meck:num_calls(aerpc_block, by_hash, '_')).
 
 %% ===================================================================
@@ -217,6 +246,8 @@ pending_subscription_test_() ->
                  fun pending_sub_pushes_hash/0} end,
       fun(_) -> {"with the full flag the payload is the eth tx object",
                  fun pending_sub_full_tx/0} end,
+      fun(_) -> {"a LOCALLY submitted transaction reaches the subscriber",
+                 fun pending_sub_tx_created/0} end,
       fun(_) -> {"a newHeads subscriber is not sent pending transactions",
                  fun pending_does_not_leak_to_other_kinds/0} end,
       fun(_) -> {"unsubscribing stops the frames",
@@ -226,6 +257,21 @@ pending_sub_pushes_hash() ->
     {ok, SubId} = aerpc_subscriptions:subscribe(self(), pending_tx, false),
     STx = spend_tx(7),
     publish_pending(STx),
+    Expected = aerpc_encoding:format_tx_hash(aetx_sign:hash(STx)),
+    receive
+        {aerpc_notify, SubId, Payload} -> ?assertEqual(Expected, Payload)
+    after 2000 -> ?assert(false)
+    end.
+
+pending_sub_tx_created() ->
+    %% aec_tx_pool:push/1 defaults to tx_created, and that is what the
+    %% node's own POST /v3/transactions uses -- so every SDK, wallet and
+    %% dapp submission arrives on this event and not on tx_received.
+    %% Listening only to tx_received meant a single-node deployment saw
+    %% nothing at all.
+    {ok, SubId} = aerpc_subscriptions:subscribe(self(), pending_tx, false),
+    STx = spend_tx(12),
+    publish_pending(tx_created, STx),
     Expected = aerpc_encoding:format_tx_hash(aetx_sign:hash(STx)),
     receive
         {aerpc_notify, SubId, Payload} -> ?assertEqual(Expected, Payload)
@@ -374,7 +420,29 @@ micro_block() ->
 
 header_for(?MICRO_HASH) -> {ok, aec_blocks:to_header(micro_block())};
 header_for(?KEY_HASH)   -> {ok, aec_blocks:to_header(key_block_at(?TOP_HEIGHT))};
+header_for(?KEY_HASH2)  -> {ok, aec_blocks:to_header(key_block2())};
 header_for(_Other)      -> error.
+
+%% A second key block closing a DIFFERENT generation, so the
+%% announced-once guard can be shown to suppress a repeat without
+%% suppressing genuinely new work.
+key_block2() ->
+    aec_blocks:new_key(?TOP_HEIGHT + 1, ?PREV_KEY2, ?PREV_KEY2,
+                       <<0:32/unit:8>>, ?TARGET, 0, 1504731164584, default,
+                       protocol(?TOP_HEIGHT + 1), <<0:32/unit:8>>, ?SENDER).
+
+%% Drain and count whatever the fan-out delivered. A short settle window,
+%% because the assertion is about how many frames arrive rather than how
+%% fast.
+frames_received() ->
+    frames_received(0).
+
+frames_received(N) ->
+    receive
+        {aerpc_notify, _SubId, _Payload} -> frames_received(N + 1)
+    after 150 ->
+        N
+    end.
 
 protocol(Height) -> aec_hard_forks:protocol_effective_at_height(Height).
 
@@ -391,13 +459,19 @@ spend_tx(Nonce) ->
     aetx_sign:new(Aetx, []).
 
 publish_tx(SignedTx) ->
+    publish_tx(tx_received, SignedTx).
+
+publish_tx(Event, SignedTx) ->
     Pid = whereis(aerpc_filter_registry),
-    Pid ! {gproc_ps_event, tx_received, #{info => SignedTx}},
+    Pid ! {gproc_ps_event, Event, #{info => SignedTx}},
     ok.
 
 publish_pending(SignedTx) ->
+    publish_pending(tx_received, SignedTx).
+
+publish_pending(Event, SignedTx) ->
     Pid = whereis(aerpc_subscriptions),
-    Pid ! {gproc_ps_event, tx_received, #{info => SignedTx}},
+    Pid ! {gproc_ps_event, Event, #{info => SignedTx}},
     _ = sys:get_state(Pid),
     ok.
 

@@ -148,12 +148,19 @@ call(Msg) ->
 %% ===================================================================
 
 init([]) ->
-    %% Only pending-transaction filters need this, and the handler drops
+    %% Only pending-transaction filters need these, and the handler drops
     %% out immediately when there are none -- but subscribing once here
     %% is simpler than managing subscription lifecycle per filter.
-    try aec_events:subscribe(tx_received)
-    catch _:_ -> ok
-    end,
+    %%
+    %% BOTH events. `aec_tx_pool:push/1' defaults to `tx_created', which
+    %% is what the node's own POST /v3/transactions uses and therefore
+    %% what every SDK, wallet and dapp produces; `tx_received' covers
+    %% only gossip from a peer and fork re-adds. Subscribing to
+    %% `tx_received' alone meant a locally submitted transaction never
+    %% reached a pending filter at all, and on a single-node deployment
+    %% nothing reached it ever.
+    [try aec_events:subscribe(E) catch _:_ -> ok end
+     || E <- [tx_created, tx_received]],
     erlang:send_after(?SWEEP_MS, self(), sweep),
     {ok, #state{}}.
 
@@ -212,9 +219,11 @@ handle_call(_Msg, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({gproc_ps_event, tx_received, #{info := SignedTx}}, State) ->
+handle_info({gproc_ps_event, Event, #{info := SignedTx}}, State)
+  when Event =:= tx_created; Event =:= tx_received ->
     {noreply, buffer_pending(SignedTx, State)};
-handle_info({gproc_ps_event, tx_received, _Other}, State) ->
+handle_info({gproc_ps_event, Event, _Other}, State)
+  when Event =:= tx_created; Event =:= tx_received ->
     {noreply, State};
 handle_info(sweep, State) ->
     erlang:send_after(?SWEEP_MS, self(), sweep),
