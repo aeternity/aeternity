@@ -250,6 +250,11 @@ pending_subscription_test_() ->
                  fun pending_sub_tx_created/0} end,
       fun(_) -> {"a newHeads subscriber is not sent pending transactions",
                  fun pending_does_not_leak_to_other_kinds/0} end,
+      fun(_) -> {"a pending subscription survives a generation close "
+                 "alongside newHeads and logs",
+                 fun pending_survives_generation_close/0} end,
+      fun(_) -> {"a pending subscription alone costs no generation work",
+                 fun pending_alone_does_no_generation_work/0} end,
       fun(_) -> {"unsubscribing stops the frames",
                  fun pending_unsubscribe/0} end]}.
 
@@ -300,6 +305,40 @@ pending_does_not_leak_to_other_kinds() ->
         {aerpc_notify, _, _} -> ?assert(false)
     after 300 -> ok
     end.
+
+pending_survives_generation_close() ->
+    %% The P3c-1 crash: fanout/2 folded over every subscription with
+    %% clauses for newHeads and logs only, so a pending_tx entry in
+    %% by_id was a function_clause that killed this gen_server -- and the
+    %% supervisor restarted it empty, silently dropping every other
+    %% client's subscriptions on the node too.
+    Registry = whereis(aerpc_subscriptions),
+    {ok, PendingId} = aerpc_subscriptions:subscribe(self(), pending_tx, false),
+    {ok, HeadsId}   = aerpc_subscriptions:subscribe(self(), newHeads, undefined),
+    {ok, _LogsId}   = aerpc_subscriptions:subscribe(self(), logs, #{}),
+
+    publish_top(?KEY_HASH, key),
+
+    %% Still the same process: no crash, no restart.
+    ?assertEqual(Registry, whereis(aerpc_subscriptions)),
+    ?assert(is_process_alive(Registry)),
+    %% The generation-driven subscriber was served.
+    ?assert(lists:member(HeadsId, received_sub_ids())),
+
+    %% And the pending subscription is still registered afterwards --
+    %% which is what "survives" has to mean. A restarted registry would
+    %% have forgotten it and delivered nothing here.
+    publish_pending(tx_created, spend_tx(31)),
+    ?assert(lists:member(PendingId, received_sub_ids())).
+
+pending_alone_does_no_generation_work() ->
+    %% With only a pending subscriber the map is non-empty, so the old
+    %% `map_size(Subs) =:= 0' guard let the expensive path run: a whole
+    %% generation fetch and a bloom over its logs, for nobody.
+    {ok, _PendingId} = aerpc_subscriptions:subscribe(self(), pending_tx, false),
+    publish_top(?KEY_HASH, key),
+    ?assertEqual(0, meck:num_calls(aerpc_block, by_hash, '_')),
+    ?assertEqual(0, frames_received()).
 
 pending_unsubscribe() ->
     {ok, SubId} = aerpc_subscriptions:subscribe(self(), pending_tx, false),
@@ -379,6 +418,11 @@ setup_subs() ->
     ok = meck:new(aec_chain, [passthrough, no_link]),
     ok = meck:new(aerpc_block, [passthrough, no_link]),
     ok = meck:expect(aec_chain, get_header, fun header_for/1),
+    %% A `logs' subscriber sends the fan-out through aerpc_logs, which
+    %% reaches a generation lookup; without a DB behind it that has to be
+    %% answered here rather than passed through.
+    ok = meck:expect(aec_chain, get_generation_by_hash,
+                     fun(_Hash, _Dir) -> error end),
     %% Return a marker carrying the hash the fan-out actually asked for,
     %% which is the whole question this case settles.
     ok = meck:expect(aerpc_block, by_hash,
@@ -434,6 +478,18 @@ key_block2() ->
 %% Drain and count whatever the fan-out delivered. A short settle window,
 %% because the assertion is about how many frames arrive rather than how
 %% fast.
+%% Drain and report which subscription ids delivered, for the cases that
+%% care about who was served rather than how many frames arrived.
+received_sub_ids() ->
+    received_sub_ids([]).
+
+received_sub_ids(Acc) ->
+    receive
+        {aerpc_notify, SubId, _Payload} -> received_sub_ids([SubId | Acc])
+    after 150 ->
+        Acc
+    end.
+
 frames_received() ->
     frames_received(0).
 

@@ -359,26 +359,54 @@ pending_full_tx(Pending, SignedTx) ->
 pending_payload(true, _Hash, Full) when is_map(Full) -> Full;
 pending_payload(_Other, Hash, _Full)                 -> Hash.
 
-fanout(_KBHash, #state{by_id = Subs}) when map_size(Subs) =:= 0 ->
-    %% No subscribers: do nothing at all. The payload build below fetches
-    %% the whole generation and blooms every log in it, so running it
-    %% eagerly would cost a full generation walk per key-block on every
-    %% node -- including the overwhelmingly common case of a node with no
-    %% WebSocket clients attached.
-    ok;
+%% Generation fan-out. Only `newHeads' and `logs' are driven by a closed
+%% generation; `pending_tx' is driven by the mempool and has nothing to
+%% do here.
+%%
+%% Select those subscribers FIRST, and let the empty case fall out of the
+%% same selection. The previous version folded over every subscription
+%% with clauses for two kinds only, which made a `pending_tx' entry a
+%% function_clause that killed this gen_server -- taking every other
+%% subscription on the node with it, since the supervisor restarts it
+%% empty. It also guarded the expensive path on `map_size(Subs) =:= 0',
+%% so a socket subscribed only to pending transactions still paid for a
+%% whole generation walk and a bloom over its logs on every key block.
+%%
+%% Filtering by kind fixes both, and the catch-all clause below makes a
+%% fourth kind a no-op rather than a crash. That is the actual lesson
+%% here: adding a kind touched the producer and the record and left this
+%% consumer alone, and the fold's shape turned the omission into an
+%% outage instead of a gap.
 fanout(KBHash, State) ->
-    %% Build the new-head payload once; reused across all `newHeads' subs.
-    BlockMap = block_for_notification(KBHash),
-    HashEnc  = aerpc_encoding:format_key_block_hash(KBHash),
-    maps:fold(
-        fun(_Id, #sub{kind = newHeads, owner = Pid, id = Id}, _Acc) ->
-                send(Pid, Id, BlockMap),
-                ok;
-           (_Id, #sub{kind = logs, owner = Pid, id = Id, criteria = Crit},
-            _Acc) ->
-                fanout_logs(Pid, Id, HashEnc, Crit),
-                ok
-        end, ok, State#state.by_id).
+    case generation_subs(State#state.by_id) of
+        [] ->
+            %% Nobody is listening for generations. The payload build
+            %% below fetches the whole generation and blooms every log in
+            %% it, which is not work to do speculatively.
+            ok;
+        Subs ->
+            %% Built once, reused across all `newHeads' subscribers.
+            BlockMap = block_for_notification(KBHash),
+            HashEnc  = aerpc_encoding:format_key_block_hash(KBHash),
+            [dispatch_generation(S, BlockMap, HashEnc) || S <- Subs],
+            ok
+    end.
+
+generation_subs(ById) ->
+    [S || #sub{kind = Kind} = S <- maps:values(ById),
+          Kind =:= newHeads orelse Kind =:= logs].
+
+dispatch_generation(#sub{kind = newHeads, owner = Pid, id = Id},
+                    BlockMap, _HashEnc) ->
+    send(Pid, Id, BlockMap);
+dispatch_generation(#sub{kind = logs, owner = Pid, id = Id, criteria = Crit},
+                    _BlockMap, HashEnc) ->
+    fanout_logs(Pid, Id, HashEnc, Crit);
+dispatch_generation(_Sub, _BlockMap, _HashEnc) ->
+    %% Unreachable given generation_subs/1, and deliberately here anyway:
+    %% a kind added later must degrade to silence, never to a crash that
+    %% empties the whole registry.
+    ok.
 
 block_for_notification(KBHash) ->
     %% Use the "tx-hash-only" form (full_txs=false) to keep the
