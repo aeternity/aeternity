@@ -12,13 +12,16 @@
 %%%                balance account (no nonce / balance constraint applies)
 %%%   * `input' -- FATE call-data bytes, `0x...' hex
 %%%   * `value' -- optional amount, hex quantity, default 0
-%%%   * `gas'   -- optional gas limit, hex quantity, default
-%%%                ?DEFAULT_CALL_GAS (matches the existing dry-run REST
-%%%                endpoint's default for call requests)
+%%%   * `gas'   -- optional gas limit, hex quantity; omitted means the
+%%%                block gas limit, as on eth
 %%%
 %%% On revert the error envelope carries `data: <hex>' so the caller
 %%% can decode the FATE error message (eth convention; see
 %%% `aerpc_jsonrpc:error/4').
+%%%
+%%% The synthesised tx's nonce comes from the account as the dry run's
+%%% own target state sees it -- never from a pool-aware source. See
+%%% `caller_nonce/2'.
 %%% @end
 %%%-------------------------------------------------------------------
 -module(aerpc_call).
@@ -194,7 +197,8 @@ build_and_run(_Top, _Caller, no_contract, _ABI, _CallData, _Amt, _Gas) ->
     %% emits "0x0".
     {ok, no_contract};
 build_and_run(Top, CallerPK, ContractPK, ABI, CallData, Amount, Gas) ->
-    {ok, Tx} = build_call_tx(CallerPK, ContractPK, ABI, CallData, Amount, Gas),
+    {ok, Tx} = build_call_tx(Top, CallerPK, ContractPK, ABI, CallData,
+                             Amount, Gas),
     run_and_extract(Top, Tx).
 
 %% Eth's block gas limit default for an omitted `gas'. Read live so a
@@ -206,23 +210,47 @@ default_gas() ->
     catch _:_ -> 1000000
     end.
 
-%% The dry-run tx has to carry a nonce the account has not used, or
-%% dry_run rejects it with tx_nonce_already_used_for_account -- which is
-%% every account that has ever transacted, and both clients attach
-%% `from' whenever an account is configured. The magic caller has never
-%% transacted, so it keeps the fixed nonce.
-caller_nonce(?MAGIC_CALLER) ->
+%% The dry-run tx has to carry the nonce the account's next transaction
+%% would use AS SEEN BY THE STATE THE DRY RUN APPLIES AGAINST, which is
+%% chain state. Read it from the account itself: on-chain nonce + 1.
+%%
+%% Not `aec_next_nonce:pick_for_account/1'. That is pool-aware -- its
+%% `max' strategy is max(StateTreeNonce, MempoolNonce) + 1 -- so with
+%% anything pending it returns a nonce that is real for the mempool and
+%% in the future for chain state, and dry_run rejects it with
+%% tx_nonce_too_high_for_account. Measured in the lab: 12 of 12
+%% estimateGas calls failed that way while two txs sat in the pool. The
+%% `continuity' strategy consults the pool too and is no better. The
+%% earlier fixed nonce of 1 failed the mirror-image way,
+%% tx_nonce_already_used_for_account, for any account that had ever
+%% transacted -- both errors are the same mistake of sourcing the nonce
+%% from somewhere other than the state being applied against.
+%%
+%% The magic caller does not exist on chain and has never transacted, so
+%% it keeps the fixed nonce.
+caller_nonce(?MAGIC_CALLER, _Top) ->
     ?DUMMY_NONCE;
-caller_nonce(CallerPK) ->
-    case aec_next_nonce:pick_for_account(CallerPK) of
-        {ok, Next}      -> Next;
-        {error, _Rsn}   -> ?DUMMY_NONCE
-    end.
+caller_nonce(CallerPK, top) ->
+    account_nonce(aec_chain:get_account(CallerPK));
+caller_nonce(CallerPK, {height, Height}) ->
+    %% A historical block id dry-runs against that height's state, so the
+    %% nonce has to come from the same height rather than from the top.
+    account_nonce(aec_chain:get_account_at_height(CallerPK, Height));
+caller_nonce(_CallerPK, _Top) ->
+    ?DUMMY_NONCE.
 
-build_call_tx(CallerPK, ContractPK, ABI, CallData, Amount, Gas) ->
+account_nonce({value, Account}) ->
+    try aec_accounts:nonce(Account) + 1
+    catch _:_ -> ?DUMMY_NONCE
+    end;
+account_nonce(_NoAccount) ->
+    %% No account at that address in this state: its first tx is nonce 1.
+    ?DUMMY_NONCE.
+
+build_call_tx(Top, CallerPK, ContractPK, ABI, CallData, Amount, Gas) ->
     aect_call_tx:new(#{
         caller_id   => aeser_id:create(account,  CallerPK),
-        nonce       => caller_nonce(CallerPK),
+        nonce       => caller_nonce(CallerPK, Top),
         contract_id => aeser_id:create(contract, ContractPK),
         abi_version => ABI,
         fee         => ?DUMMY_FEE,

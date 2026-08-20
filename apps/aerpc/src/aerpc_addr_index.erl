@@ -12,6 +12,11 @@
 %%% when the operator enables `http > endpoints > rpc', so a node with
 %%% the endpoint off pays neither the backfill nor the per-block work.
 %%%
+%%% It is filled from two directions: a one-off walk of the accounts and
+%%% contracts tries at the top block, and, from then on, each new block
+%%% as `top_changed' announces it -- see `index_new_top/1', which is
+%%% where the block type matters.
+%%%
 %%% == The invariant that matters ==
 %%%
 %%% Ethereum semantics say an unknown address has balance zero. That is
@@ -194,9 +199,9 @@ handle_info({backfill_contracts, Pubkeys}, State) ->
                        [counter(indexed), counter(collisions)]),
             {noreply, State#state{phase = complete}}
     end;
-handle_info({gproc_ps_event, top_changed, #{info := #{block_hash := KBHash}}},
-            State) ->
-    index_generation(KBHash),
+handle_info({gproc_ps_event, top_changed, #{info := Info}}, State)
+  when is_map(Info) ->
+    index_new_top(Info),
     {noreply, State};
 handle_info({gproc_ps_event, top_changed, _Other}, State) ->
     {noreply, State};
@@ -252,23 +257,74 @@ contract_pubkeys(Trees) ->
 %% Incremental maintenance
 %% ===================================================================
 
-%% Index every pubkey this layer can emit for the new generation: the
-%% beneficiary, each tx's origin, each tx's `to' counterpart and any
-%% contract a create produced. That is exactly the closure of addresses
-%% that can come back to us as a 20-byte input for these blocks.
-index_generation(KBHash) ->
-    case aec_chain:get_generation_by_hash(KBHash, forward) of
-        {ok, #{key_block := KB, micro_blocks := MBs}} ->
-            index_beneficiary(KB),
-            [index_tx(STx) || MB <- MBs, STx <- aec_blocks:txs(MB)],
+%% `top_changed' carries the hash of the NEW TOP BLOCK, which is a micro
+%% block whenever one is mined and a key block otherwise. Handing that
+%% hash to `get_generation_by_hash/2' -- which is keyed by the key block
+%% -- is the same micro-vs-key confusion that broke the receipts, one
+%% layer up, and it made this path dead: on a micro block the lookup
+%% returned `error', and on a key block the generation it opens has no
+%% micro blocks yet. Only the beneficiary was ever indexed, so every
+%% address first appearing after backfill resolved to `unknown' and was
+%% served eth's zero-and-empty default -- a wrong answer that is
+%% well-formed, which is exactly what the index exists to prevent.
+%%
+%% So dispatch on the block type the event already tells us:
+%%
+%%   micro -> index that micro block's own transactions. Precise, and
+%%            O(txs in this block) rather than O(generation) per event.
+%%   key   -> index the beneficiary, and sweep the generation this key
+%%            block just CLOSED (its prev_key_hash). The sweep is the
+%%            catch-up net: a reorg or a sync burst advances the top in
+%%            one event and the intervening micro blocks never raise one
+%%            of their own, so without it those txs are missed until a
+%%            rebuild. Re-inserting is idempotent and bounded by the
+%%            block gas limit, so the sweep is cheap.
+index_new_top(#{block_hash := Hash} = Info) ->
+    case block_type(Hash, Info) of
+        micro   -> index_micro_block(Hash);
+        key     -> index_key_block(Hash);
+        unknown -> ok
+    end;
+index_new_top(_Other) ->
+    ok.
+
+%% The event carries `block_type'; fall back to the header so a change in
+%% the event shape degrades to a DB read rather than to doing nothing.
+block_type(_Hash, #{block_type := Type}) when Type =:= key; Type =:= micro ->
+    Type;
+block_type(Hash, _Info) ->
+    case aec_chain:get_header(Hash) of
+        {ok, Header} -> aec_headers:type(Header);
+        error        -> unknown
+    end.
+
+index_micro_block(Hash) ->
+    case aec_chain:get_block(Hash) of
+        {ok, Block} ->
+            [index_tx(STx) || STx <- aec_blocks:txs(Block)],
             ok;
         error ->
             ok
     end.
 
-index_beneficiary(KB) ->
-    try do_insert(aec_headers:beneficiary(aec_blocks:to_key_header(KB)))
-    catch _:_ -> false
+index_key_block(Hash) ->
+    case aec_chain:get_header(Hash) of
+        {ok, Header} ->
+            catch do_insert(aec_headers:beneficiary(Header)),
+            sweep_generation(aec_headers:prev_key_hash(Header));
+        error ->
+            ok
+    end.
+
+%% Re-walk a closed generation. Every insert is idempotent, so this only
+%% costs a lookup per already-known pubkey.
+sweep_generation(PrevKeyHash) ->
+    case aec_chain:get_generation_by_hash(PrevKeyHash, forward) of
+        {ok, #{micro_blocks := MBs}} ->
+            [index_tx(STx) || MB <- MBs, STx <- aec_blocks:txs(MB)],
+            ok;
+        error ->
+            ok
     end.
 
 index_tx(SignedTx) ->
