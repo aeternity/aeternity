@@ -1,13 +1,27 @@
 %%%-------------------------------------------------------------------
-%%% @doc Transaction adapter for the AE JSON-RPC layer.
+%%% @doc Transaction adapter for the eth-compatible JSON-RPC layer.
 %%%
-%%% Resolves an AE signed-tx to the JSON shape that ae_getTransactionBy*
-%%% methods return. v1 emits the AE-native field set (via
-%%% `aetx_sign:serialize_for_client/4') rather than re-mapping every
-%%% AE tx type onto the eth tx shape -- a faithful translation requires
-%%% a tx-type dispatch table that is non-trivial for non-spend / non-
-%%% contract types (oracle, name, channel, paying-for, GA, ...). When
-%%% that translation lands it slots in here without touching callers.
+%%% Emits the eth transaction object, not AE's own field set. The
+%%% earlier `aetx_sign:serialize_for_client/2' passthrough returned
+%%% `ak_...' / `th_...' strings and AE-specific keys, which no eth
+%%% client can read; `to_eth_tx/4' is the translation.
+%%%
+%%% The mapping is exact for the tx types eth has a counterpart for
+%%% (`spend_tx' -> a value transfer, `contract_call_tx' -> a call,
+%%% `contract_create_tx' -> a deploy) and degrades for the ones it does
+%%% not (oracle, name, channel, paying-for, GA): those keep the common
+%%% envelope -- hash, from, nonce, block position -- and report `to' as
+%%% null with zero value/gas. That is lossy by construction; a caller
+%%% needing the full AE tx body uses the node's own REST API, or
+%%% `eth_getRawTransactionByHash' for the wire bytes.
+%%%
+%%% Signature fields. AE signs with ed25519 over a network-id-tagged
+%%% payload; there is no secp256k1 recovery id, so `v' / `r' / `s' are
+%%% NOT an eth signature and `ecrecover' over them yields nothing. We
+%%% emit `r' and `s' as the two 32-byte halves of the first ed25519
+%%% signature and `v' as `0x0', because ethers' response formatter
+%%% expects the keys to be present and well-formed. Treat them as
+%%% opaque bytes carrying the real signature, not as a recoverable one.
 %%% @end
 %%%-------------------------------------------------------------------
 -module(aerpc_tx).
@@ -20,6 +34,7 @@
         , block_receipts_by_hash/1
         , block_receipts_by_height/1
         , raw_by_hash/1
+        , to_eth_tx/4
         ]).
 
 %% ===================================================================
@@ -275,23 +290,19 @@ gas_used_for_signed_tx(SignedTx, BlockHash) ->
     {Gas, _Status} = gas_and_status(Type, Tx, BlockHash),
     Gas.
 
+%% `aec_chain:get_contract_call/3' wants {ContractPubkey, CallId,
+%% BlockHash}. The previous version passed the CALLER pubkey where the
+%% call id belongs and probed `contract_pubkey/1' on `aect_call_tx',
+%% which does not export it -- so the lookup never resolved and every
+%% contract receipt reported gasUsed 0 with status 0x1, including
+%% reverted calls. Both tx modules already compute the exact call id;
+%% name them rather than probing.
 call_result(Tx, BlockHash) ->
     try
-        {Mod, _Body} = aetx:specialize_callback(Tx),
-        ContractId =
-            case erlang:function_exported(Mod, contract_pubkey, 1) of
-                true -> Mod:contract_pubkey(Tx);
-                false -> undefined
-            end,
-        CallerId =
-            case erlang:function_exported(Mod, caller_pubkey, 1) of
-                true -> Mod:caller_pubkey(Tx);
-                false -> aetx:origin(Tx)
-            end,
-        case ContractId of
-            undefined -> none;
-            Cid ->
-                case aec_chain:get_contract_call(Cid, CallerId, BlockHash) of
+        {Mod, Inner} = aetx:specialize_callback(Tx),
+        case call_lookup_keys(Mod, Inner) of
+            {ok, ContractPK, CallId} ->
+                case aec_chain:get_contract_call(ContractPK, CallId, BlockHash) of
                     {ok, Call} ->
                         Status = case aect_call:return_type(Call) of
                                      ok -> <<"0x1">>;
@@ -300,39 +311,64 @@ call_result(Tx, BlockHash) ->
                         {ok, aect_call:gas_used(Call), Status};
                     {error, _Reason} ->
                         none
-                end
+                end;
+            none ->
+                none
         end
     catch _:_ -> none
     end.
 
+call_lookup_keys(aect_call_tx, Inner) ->
+    {ok, aect_call_tx:ct_call_id(Inner), aect_call_tx:call_id(Inner)};
+call_lookup_keys(aect_create_tx, Inner) ->
+    {ok, aect_create_tx:contract_pubkey(Inner), aect_create_tx:call_id(Inner)};
+call_lookup_keys(_Mod, _Inner) ->
+    none.
+
+%% Two accessor-name mistakes made every one of these fields null.
+%% `aec_spend_tx' exports `recipient_id/1', not `recipient_pubkey/1',
+%% and `aect_call_tx' exports `contract_id/1', not `contract_pubkey/1',
+%% so `function_exported/3' was false and the `to' field was always
+%% null. Independently, the surviving branches passed the OUTER `aetx'
+%% record where the callback wanted its own inner tx, which raised
+%% function_clause straight into `catch _:_ -> null'. Both are fixed by
+%% going through the id accessors with the inner tx.
 to_field(spend_tx, Tx) ->
-    try
-        {Mod, _Body} = aetx:specialize_callback(Tx),
-        case erlang:function_exported(Mod, recipient_pubkey, 1) of
-            true  -> format_account_or_null(Mod:recipient_pubkey(Tx));
-            false -> null
-        end
-    catch _:_ -> null
-    end;
+    pubkey_from_id(Tx, recipient_id);
 to_field(contract_call_tx, Tx) ->
-    try
-        {Mod, _Body} = aetx:specialize_callback(Tx),
-        case erlang:function_exported(Mod, contract_pubkey, 1) of
-            true  -> aerpc_encoding:format_contract(Mod:contract_pubkey(Tx));
-            false -> null
-        end
-    catch _:_ -> null
-    end;
+    pubkey_from_id(Tx, contract_id);
 to_field(contract_create_tx, _Tx) ->
+    %% Eth reports a deploy with `to: null'; the new address is on the
+    %% receipt's `contractAddress'.
     null;
 to_field(_, _) ->
     null.
 
+%% @doc Read an `aeser_id' field off a tx and emit its 32-byte pubkey.
+%% A spend to a name (`{name, Hash}') has no account pubkey to report,
+%% so it comes out null rather than as a name hash pretending to be an
+%% address.
+pubkey_from_id(Tx, Accessor) ->
+    try
+        {Mod, Inner} = aetx:specialize_callback(Tx),
+        case erlang:function_exported(Mod, Accessor, 1) of
+            true ->
+                case aeser_id:specialize(Mod:Accessor(Inner)) of
+                    {account,  PK} -> aerpc_encoding:format_account(PK);
+                    {contract, PK} -> aerpc_encoding:format_contract(PK);
+                    _Other         -> null
+                end;
+            false ->
+                null
+        end
+    catch _:_ -> null
+    end.
+
 contract_address(contract_create_tx, Tx) ->
     try
-        {Mod, _Body} = aetx:specialize_callback(Tx),
+        {Mod, Inner} = aetx:specialize_callback(Tx),
         case erlang:function_exported(Mod, contract_pubkey, 1) of
-            true  -> aerpc_encoding:format_contract(Mod:contract_pubkey(Tx));
+            true  -> aerpc_encoding:format_contract(Mod:contract_pubkey(Inner));
             false -> null
         end
     catch _:_ -> null
@@ -341,14 +377,7 @@ contract_address(_, _) ->
     null.
 
 effective_gas_price(Tx) ->
-    try
-        {Mod, _Body} = aetx:specialize_callback(Tx),
-        case erlang:function_exported(Mod, gas_price, 1) of
-            true  -> aerpc_encoding:to_quantity(Mod:gas_price(Tx));
-            false -> <<"0x0">>
-        end
-    catch _:_ -> <<"0x0">>
-    end.
+    aerpc_encoding:to_quantity(gas_price_of(Tx)).
 
 format_account_or_null(undefined) -> null;
 format_account_or_null(<<>>)      -> null;
@@ -376,21 +405,137 @@ nth_safe(1, [H | _])       -> {ok, H};
 nth_safe(N, [_ | T])       -> nth_safe(N - 1, T).
 
 serialize_pending(SignedTx) ->
-    try aetx_sign:serialize_for_client_pending(SignedTx)
-    catch _:_ ->
-        #{<<"hash">> => aerpc_encoding:format_tx_hash(aetx_sign:hash(SignedTx))}
-    end.
+    %% Eth reports a mempool tx with null block position.
+    to_eth_tx(SignedTx, null, null, null).
 
 serialize_mined(SignedTx, BlockHash, TxHash) ->
-    case aec_chain:get_header(BlockHash) of
-        {ok, Header} ->
-            try aetx_sign:serialize_for_client(Header, SignedTx)
-            catch _:_ ->
-                #{<<"hash">> => aerpc_encoding:format_tx_hash(TxHash)}
-            end;
+    BlockNumber = block_number(BlockHash),
+    TxIndex     = tx_index_in_block(BlockHash, TxHash),
+    to_eth_tx(SignedTx, BlockHash, BlockNumber, TxIndex).
+
+%% @doc Position of a tx inside its generation, or `null' if it is not
+%% found there. Eth requires `transactionIndex' on a mined tx, and it
+%% is the flat index across the generation's micro-blocks -- the same
+%% ordering `eth_getBlockByNumber' uses for its `transactions' array,
+%% so the two agree by construction.
+tx_index_in_block(BlockHash, TxHash) ->
+    case aec_chain:get_generation_by_hash(BlockHash, forward) of
+        {ok, #{micro_blocks := MBs}} ->
+            Flat = lists:flatten([aec_blocks:txs(MB) || MB <- MBs]),
+            index_of(TxHash, Flat, 0);
         error ->
-            #{<<"hash">> => aerpc_encoding:format_tx_hash(TxHash)}
+            null
     end.
+
+index_of(_TxHash, [], _N) -> null;
+index_of(TxHash, [STx | Rest], N) ->
+    case aetx_sign:hash(STx) of
+        TxHash -> N;
+        _Other -> index_of(TxHash, Rest, N + 1)
+    end.
+
+%% @doc Translate one AE signed tx into the eth transaction object.
+%% `BlockHash' / `BlockNumber' / `TxIndex' are `null' for a pending tx.
+-spec to_eth_tx(aetx_sign:signed_tx(), binary() | null,
+                non_neg_integer() | null, non_neg_integer() | null) -> map().
+to_eth_tx(SignedTx, BlockHash, BlockNumber, TxIndex) ->
+    Tx = aetx_sign:tx(SignedTx),
+    {Type, _Body} = aetx:specialize_type(Tx),
+    {R, S} = signature_halves(SignedTx),
+    #{
+        <<"hash">>             => aerpc_encoding:format_tx_hash(
+                                      aetx_sign:hash(SignedTx)),
+        <<"blockHash">>        => maybe_hash(BlockHash),
+        <<"blockNumber">>      => maybe_quantity(BlockNumber),
+        <<"transactionIndex">> => maybe_quantity(TxIndex),
+        <<"from">>             => format_account_or_null(aetx:origin(Tx)),
+        <<"to">>               => to_field(Type, Tx),
+        <<"value">>            => aerpc_encoding:to_quantity(value_of(Type, Tx)),
+        <<"gas">>              => aerpc_encoding:to_quantity(gas_of(Tx)),
+        <<"gasPrice">>         => aerpc_encoding:to_quantity(gas_price_of(Tx)),
+        <<"input">>            => aerpc_encoding:to_hex_data(input_of(Type, Tx)),
+        <<"nonce">>            => aerpc_encoding:to_quantity(nonce_of(Tx)),
+        <<"type">>             => <<"0x0">>,
+        <<"chainId">>          => aerpc_encoding:to_quantity(
+                                      aerpc_chain_id:current()),
+        <<"v">>                => <<"0x0">>,
+        <<"r">>                => R,
+        <<"s">>                => S
+    }.
+
+maybe_hash(null) -> null;
+maybe_hash(Hash) -> aerpc_encoding:format_key_block_hash(Hash).
+
+maybe_quantity(null) -> null;
+maybe_quantity(N)    -> aerpc_encoding:to_quantity(N).
+
+%% AE signature lists can be empty (dry-run synthesised txs) or carry
+%% several signatures (multisig / GA). Eth has room for exactly one, so
+%% the first is what is exposed; the full list is in the raw bytes.
+signature_halves(SignedTx) ->
+    Zero = aerpc_encoding:zero_word(),
+    try aetx_sign:signatures(SignedTx) of
+        [<<R:32/binary, S:32/binary>> | _] ->
+            {aerpc_encoding:to_hex_data(R), aerpc_encoding:to_hex_data(S)};
+        _Other ->
+            {Zero, Zero}
+    catch _:_ ->
+        {Zero, Zero}
+    end.
+
+nonce_of(Tx) ->
+    try aetx:nonce(Tx) of
+        N when is_integer(N), N >= 0 -> N;
+        _Other                       -> 0
+    catch _:_ -> 0
+    end.
+
+gas_price_of(Tx) ->
+    try aetx:gas_price(Tx) of
+        N when is_integer(N), N >= 0 -> N;
+        _Other                       -> 0   %% undefined for non-gas tx types
+    catch _:_ -> 0
+    end.
+
+gas_of(Tx) ->
+    try
+        {Mod, Inner} = aetx:specialize_callback(Tx),
+        case erlang:function_exported(Mod, gas, 1) of
+            true  -> Mod:gas(Inner);
+            false -> 0
+        end
+    catch _:_ -> 0
+    end.
+
+%% The AE leg only. A contract call that moves AEX-9 tokens reports
+%% `value: 0x0' here, exactly as an ERC-20 transfer does on eth.
+value_of(Type, Tx)
+  when Type =:= spend_tx;
+       Type =:= contract_call_tx;
+       Type =:= contract_create_tx ->
+    try
+        {Mod, Inner} = aetx:specialize_callback(Tx),
+        case erlang:function_exported(Mod, amount, 1) of
+            true  -> Mod:amount(Inner);
+            false -> 0
+        end
+    catch _:_ -> 0
+    end;
+value_of(_Other, _Tx) ->
+    0.
+
+input_of(Type, Tx) when Type =:= contract_call_tx;
+                        Type =:= contract_create_tx ->
+    try
+        {Mod, Inner} = aetx:specialize_callback(Tx),
+        case erlang:function_exported(Mod, call_data, 1) of
+            true  -> Mod:call_data(Inner);
+            false -> <<>>
+        end
+    catch _:_ -> <<>>
+    end;
+input_of(_Other, _Tx) ->
+    <<>>.
 
 decode_tx_hash(<<"th_", _/binary>> = Encoded) ->
     case aeapi:decode_tx_hash(Encoded) of

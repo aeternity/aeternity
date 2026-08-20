@@ -1,0 +1,12 @@
+---
+peers: []
+
+mining:
+    beneficiary: "ak_DummyPubKeyDoNotEverUse999999999999999999999999999"
+
+http:
+    endpoints:
+        rpc: true
+    rpc:
+        max_batch_size: 32
+        chain_id: 987654

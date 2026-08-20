@@ -117,18 +117,30 @@ select_one_address(Addr, From, To) ->
              ['$2']}],
     ets:select(?IDX, Spec).
 
+%% Both readers tolerate the tables being absent. `aerpc_log_indexer' is
+%% not started for the public-read surface, so nothing has called
+%% `init/0' and `ets:lookup/2' on a missing table would raise badarg --
+%% which `aerpc_log_store:indexed/1' sits directly under, and which would
+%% therefore crash `eth_getLogs' rather than sending it down the inline
+%% walker. `undefined' is exactly the "no index" answer `indexed/1'
+%% already knows how to handle.
 -spec floor_height() -> non_neg_integer() | undefined.
 floor_height() ->
-    case ets:lookup(?META, floor_height) of
-        [{floor_height, H}] -> H;
-        [] -> undefined
-    end.
+    lookup_meta(floor_height).
 
 -spec watermark() -> non_neg_integer() | undefined.
 watermark() ->
-    case ets:lookup(?META, watermark) of
-        [{watermark, H}] -> H;
-        [] -> undefined
+    lookup_meta(watermark).
+
+lookup_meta(Key) ->
+    case ets:info(?META) of
+        undefined ->
+            undefined;
+        _Info ->
+            case ets:lookup(?META, Key) of
+                [{Key, H}] -> H;
+                []         -> undefined
+            end
     end.
 
 -spec set_floor(non_neg_integer()) -> true.

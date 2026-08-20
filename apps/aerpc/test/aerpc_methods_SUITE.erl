@@ -22,66 +22,66 @@
         , jsonrpc_error_shape/1
         , encoding_quantity_roundtrip/1
         , encoding_quantity_zero/1
-        , method_ae_accounts/1
-        , method_ae_netListening/1
-        , method_ae_getStorageAt/1
-        , method_ae_getUncleCountByBlockHash/1
-        , method_ae_getUncleCountByBlockNumber/1
-        , method_ae_getUncleByBlockHashAndIndex/1
-        , method_ae_getUncleByBlockNumberAndIndex/1
-        , method_ae_netPeerCount/1
-        , method_ae_protocolVersion/1
-        , method_ae_gasPrice/1
-        , method_ae_syncing/1
-        , method_ae_sha3_hello_world/1
-        , method_ae_sha3_empty/1
-        , method_ae_sha3_invalid_params/1
+        , method_eth_accounts/1
+        , method_net_listening/1
+        , method_eth_getStorageAt/1
+        , method_eth_getUncleCountByBlockHash/1
+        , method_eth_getUncleCountByBlockNumber/1
+        , method_eth_getUncleByBlockHashAndIndex/1
+        , method_eth_getUncleByBlockNumberAndIndex/1
+        , method_net_peerCount/1
+        , method_eth_protocolVersion/1
+        , method_eth_gasPrice/1
+        , method_eth_syncing/1
+        , method_web3_sha3_hello_world/1
+        , method_web3_sha3_empty/1
+        , method_web3_sha3_invalid_params/1
         , encoding_hex_data_roundtrip/1
-        , method_ae_chainId/1
+        , method_eth_chainId/1
         , chain_id_lookup_table/1
-        , method_ae_netVersion/1
-        , method_ae_getBlockByHash/1
-        , method_ae_getBlockByHash_invalid_params/1
+        , method_net_version/1
+        , method_eth_getBlockByHash/1
+        , method_eth_getBlockByHash_invalid_params/1
         , block_resolve_tag/1
-        , method_ae_getBlockByNumber/1
-        , method_ae_getBlockTransactionCountByHash/1
-        , method_ae_getBlockTransactionCountByNumber/1
-        , method_ae_getBalance/1
-        , method_ae_getBalance_invalid_address/1
+        , method_eth_getBlockByNumber/1
+        , method_eth_getBlockTransactionCountByHash/1
+        , method_eth_getBlockTransactionCountByNumber/1
+        , method_eth_getBalance/1
+        , method_eth_getBalance_invalid_address/1
         , account_decode_address/1
-        , method_ae_getCode/1
-        , method_ae_getTransactionCount/1
-        , method_ae_getTransactionByHash/1
-        , method_ae_getTransactionByBlockHashAndIndex/1
-        , method_ae_getTransactionByBlockNumberAndIndex/1
-        , method_ae_getTransactionReceipt/1
-        , method_ae_getBlockReceipts_routed_by_tag/1
-        , method_ae_getBlockReceipts_routed_by_hash/1
-        , method_ae_getBlockReceipts_invalid_params/1
+        , method_eth_getCode/1
+        , method_eth_getTransactionCount/1
+        , method_eth_getTransactionByHash/1
+        , method_eth_getTransactionByBlockHashAndIndex/1
+        , method_eth_getTransactionByBlockNumberAndIndex/1
+        , method_eth_getTransactionReceipt/1
+        , method_eth_getBlockReceipts_routed_by_tag/1
+        , method_eth_getBlockReceipts_routed_by_hash/1
+        , method_eth_getBlockReceipts_invalid_params/1
         , bloom_empty/1
-        , method_ae_call/1
-        , method_ae_call_missing_to/1
-        , method_ae_call_invalid_params_shape/1
-        , method_ae_call_invalid_input_hex/1
-        , method_ae_estimateGas/1
+        , method_eth_call/1
+        , method_eth_call_missing_to/1
+        , method_eth_call_invalid_params_shape/1
+        , method_eth_call_invalid_input_hex/1
+        , method_eth_estimateGas/1
         , block_resolve_dry_run_top/1
         , encoding_optional_quantity/1
         , jsonrpc_error_with_data/1
-        , method_ae_getLogs/1
-        , method_ae_getLogs_invalid_params/1
-        , method_ae_getLogs_range_too_wide/1
-        , method_ae_getFilterChanges/1
-        , method_ae_getFilterLogs/1
-        , method_ae_newBlockFilter/1
-        , method_ae_newFilter/1
-        , method_ae_newPendingTransactionFilter/1
-        , method_ae_sendRawTransaction/1
-        , method_ae_sendTransaction/1
-        , method_ae_sign/1
-        , method_ae_signTransaction/1
-        , method_ae_uninstallFilter/1
-        , method_ae_subscribe_over_http/1
-        , method_ae_unsubscribe_over_http/1
+        , method_eth_getLogs/1
+        , method_eth_getLogs_invalid_params/1
+        , method_eth_getLogs_range_too_wide/1
+        , method_eth_getFilterChanges/1
+        , method_eth_getFilterLogs/1
+        , method_eth_newBlockFilter/1
+        , method_eth_newFilter/1
+        , method_eth_newPendingTransactionFilter/1
+        , method_eth_sendRawTransaction/1
+        , method_eth_sendTransaction/1
+        , method_eth_sign/1
+        , method_eth_signTransaction/1
+        , method_eth_uninstallFilter/1
+        , method_eth_subscribe_over_http/1
+        , method_eth_unsubscribe_over_http/1
         , subscriptions_allocate_unique_ids/1
         , subscriptions_unsubscribe_idempotent/1
         , subscriptions_drop_owner_releases/1
@@ -92,19 +92,19 @@
         , log_store_select_by_address/1
         , log_store_select_any_address/1
         , log_store_indexed_predicate/1
-        , method_ae_feeHistory_routed/1
-        , method_ae_feeHistory_invalid_params/1
-        , method_ae_maxPriorityFeePerGas_routed/1
+        , method_eth_feeHistory_routed/1
+        , method_eth_feeHistory_invalid_params/1
+        , method_eth_maxPriorityFeePerGas_routed/1
         , fee_percentile_helper/1
         , block_resolve_id_legacy/1
         , block_resolve_id_number_object/1
         , block_resolve_id_invalid_object/1
-        , method_ae_getBalance_with_block_object/1
-        , method_ae_getRawTransactionByHash_routed/1
-        , method_ae_getRawTransactionByHash_invalid_params/1
+        , method_eth_getBalance_with_block_object/1
+        , method_eth_getRawTransactionByHash_routed/1
+        , method_eth_getRawTransactionByHash_invalid_params/1
         , errors_range_too_wide_format/1
         , errors_batch_too_large_format/1
-        , method_ae_getLogs_range_too_wide_message/1
+        , method_eth_getLogs_range_too_wide_message/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -119,66 +119,66 @@ all() ->
     , jsonrpc_error_shape
     , encoding_quantity_roundtrip
     , encoding_quantity_zero
-    , method_ae_accounts
-    , method_ae_netListening
-    , method_ae_getStorageAt
-    , method_ae_getUncleCountByBlockHash
-    , method_ae_getUncleCountByBlockNumber
-    , method_ae_getUncleByBlockHashAndIndex
-    , method_ae_getUncleByBlockNumberAndIndex
-    , method_ae_netPeerCount
-    , method_ae_protocolVersion
-    , method_ae_gasPrice
-    , method_ae_syncing
-    , method_ae_sha3_hello_world
-    , method_ae_sha3_empty
-    , method_ae_sha3_invalid_params
+    , method_eth_accounts
+    , method_net_listening
+    , method_eth_getStorageAt
+    , method_eth_getUncleCountByBlockHash
+    , method_eth_getUncleCountByBlockNumber
+    , method_eth_getUncleByBlockHashAndIndex
+    , method_eth_getUncleByBlockNumberAndIndex
+    , method_net_peerCount
+    , method_eth_protocolVersion
+    , method_eth_gasPrice
+    , method_eth_syncing
+    , method_web3_sha3_hello_world
+    , method_web3_sha3_empty
+    , method_web3_sha3_invalid_params
     , encoding_hex_data_roundtrip
-    , method_ae_chainId
+    , method_eth_chainId
     , chain_id_lookup_table
-    , method_ae_netVersion
-    , method_ae_getBlockByHash
-    , method_ae_getBlockByHash_invalid_params
+    , method_net_version
+    , method_eth_getBlockByHash
+    , method_eth_getBlockByHash_invalid_params
     , block_resolve_tag
-    , method_ae_getBlockByNumber
-    , method_ae_getBlockTransactionCountByHash
-    , method_ae_getBlockTransactionCountByNumber
-    , method_ae_getBalance
-    , method_ae_getBalance_invalid_address
+    , method_eth_getBlockByNumber
+    , method_eth_getBlockTransactionCountByHash
+    , method_eth_getBlockTransactionCountByNumber
+    , method_eth_getBalance
+    , method_eth_getBalance_invalid_address
     , account_decode_address
-    , method_ae_getCode
-    , method_ae_getTransactionCount
-    , method_ae_getTransactionByHash
-    , method_ae_getTransactionByBlockHashAndIndex
-    , method_ae_getTransactionByBlockNumberAndIndex
-    , method_ae_getTransactionReceipt
-    , method_ae_getBlockReceipts_routed_by_tag
-    , method_ae_getBlockReceipts_routed_by_hash
-    , method_ae_getBlockReceipts_invalid_params
+    , method_eth_getCode
+    , method_eth_getTransactionCount
+    , method_eth_getTransactionByHash
+    , method_eth_getTransactionByBlockHashAndIndex
+    , method_eth_getTransactionByBlockNumberAndIndex
+    , method_eth_getTransactionReceipt
+    , method_eth_getBlockReceipts_routed_by_tag
+    , method_eth_getBlockReceipts_routed_by_hash
+    , method_eth_getBlockReceipts_invalid_params
     , bloom_empty
-    , method_ae_call
-    , method_ae_call_missing_to
-    , method_ae_call_invalid_params_shape
-    , method_ae_call_invalid_input_hex
-    , method_ae_estimateGas
+    , method_eth_call
+    , method_eth_call_missing_to
+    , method_eth_call_invalid_params_shape
+    , method_eth_call_invalid_input_hex
+    , method_eth_estimateGas
     , block_resolve_dry_run_top
     , encoding_optional_quantity
     , jsonrpc_error_with_data
-    , method_ae_getLogs
-    , method_ae_getLogs_invalid_params
-    , method_ae_getLogs_range_too_wide
-    , method_ae_getFilterChanges
-    , method_ae_getFilterLogs
-    , method_ae_newBlockFilter
-    , method_ae_newFilter
-    , method_ae_newPendingTransactionFilter
-    , method_ae_sendRawTransaction
-    , method_ae_sendTransaction
-    , method_ae_sign
-    , method_ae_signTransaction
-    , method_ae_uninstallFilter
-    , method_ae_subscribe_over_http
-    , method_ae_unsubscribe_over_http
+    , method_eth_getLogs
+    , method_eth_getLogs_invalid_params
+    , method_eth_getLogs_range_too_wide
+    , method_eth_getFilterChanges
+    , method_eth_getFilterLogs
+    , method_eth_newBlockFilter
+    , method_eth_newFilter
+    , method_eth_newPendingTransactionFilter
+    , method_eth_sendRawTransaction
+    , method_eth_sendTransaction
+    , method_eth_sign
+    , method_eth_signTransaction
+    , method_eth_uninstallFilter
+    , method_eth_subscribe_over_http
+    , method_eth_unsubscribe_over_http
     , subscriptions_allocate_unique_ids
     , subscriptions_unsubscribe_idempotent
     , subscriptions_drop_owner_releases
@@ -189,19 +189,19 @@ all() ->
     , log_store_select_by_address
     , log_store_select_any_address
     , log_store_indexed_predicate
-    , method_ae_feeHistory_routed
-    , method_ae_feeHistory_invalid_params
-    , method_ae_maxPriorityFeePerGas_routed
+    , method_eth_feeHistory_routed
+    , method_eth_feeHistory_invalid_params
+    , method_eth_maxPriorityFeePerGas_routed
     , fee_percentile_helper
     , block_resolve_id_legacy
     , block_resolve_id_number_object
     , block_resolve_id_invalid_object
-    , method_ae_getBalance_with_block_object
-    , method_ae_getRawTransactionByHash_routed
-    , method_ae_getRawTransactionByHash_invalid_params
+    , method_eth_getBalance_with_block_object
+    , method_eth_getRawTransactionByHash_routed
+    , method_eth_getRawTransactionByHash_invalid_params
     , errors_range_too_wide_format
     , errors_batch_too_large_format
-    , method_ae_getLogs_range_too_wide_message
+    , method_eth_getLogs_range_too_wide_message
     ].
 
 %% ===================================================================
@@ -219,7 +219,7 @@ dispatch_invalid_envelope(_Config) ->
 dispatch_method_not_found(_Config) ->
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 7,
-            <<"method">>  => <<"ae_doesNotExist">>},
+            <<"method">>  => <<"eth_doesNotExist">>},
     Reply = aerpc:dispatch(Req),
     ?assertMatch(#{<<"jsonrpc">> := <<"2.0">>,
                    <<"id">>      := 7,
@@ -230,10 +230,10 @@ dispatch_method_not_found(_Config) ->
 dispatch_batch_returns_array(_Config) ->
     Req1 = #{<<"jsonrpc">> => <<"2.0">>,
              <<"id">>      => 1,
-             <<"method">>  => <<"ae_doesNotExist">>},
+             <<"method">>  => <<"eth_doesNotExist">>},
     Req2 = #{<<"jsonrpc">> => <<"2.0">>,
              <<"id">>      => 2,
-             <<"method">>  => <<"ae_alsoMissing">>},
+             <<"method">>  => <<"eth_alsoMissing">>},
     Reply = aerpc:dispatch([Req1, Req2]),
     ?assertMatch([#{<<"id">> := 1, <<"error">> := _},
                   #{<<"id">> := 2, <<"error">> := _}], Reply),
@@ -286,26 +286,26 @@ encoding_quantity_zero(_Config) ->
 %% Method dispatchers
 %% ===================================================================
 
-method_ae_accounts(_Config) ->
+method_eth_accounts(_Config) ->
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_accounts">>},
+            <<"method">>  => <<"eth_accounts">>},
     ?assertMatch(#{<<"id">> := 1, <<"result">> := []},
                  aerpc:dispatch(Req)),
     ok.
 
-method_ae_netListening(_Config) ->
+method_net_listening(_Config) ->
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_netListening">>},
+            <<"method">>  => <<"net_listening">>},
     ?assertMatch(#{<<"id">> := 1, <<"result">> := true},
                  aerpc:dispatch(Req)),
     ok.
 
-method_ae_getStorageAt(_Config) ->
+method_eth_getStorageAt(_Config) ->
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_getStorageAt">>,
+            <<"method">>  => <<"eth_getStorageAt">>,
             <<"params">>  => [<<"ct_anything">>, <<"0x0">>, <<"latest">>]},
     Expected = <<"0x", (binary:copy(<<"0">>, 64))/binary>>,
     ?assertEqual(#{<<"jsonrpc">> => <<"2.0">>,
@@ -314,62 +314,62 @@ method_ae_getStorageAt(_Config) ->
                  aerpc:dispatch(Req)),
     ok.
 
-method_ae_getUncleCountByBlockHash(_Config) ->
+method_eth_getUncleCountByBlockHash(_Config) ->
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_getUncleCountByBlockHash">>,
+            <<"method">>  => <<"eth_getUncleCountByBlockHash">>,
             <<"params">>  => [<<"0xdeadbeef">>]},
     ?assertMatch(#{<<"id">> := 1, <<"result">> := <<"0x0">>},
                  aerpc:dispatch(Req)),
     ok.
 
-method_ae_getUncleCountByBlockNumber(_Config) ->
+method_eth_getUncleCountByBlockNumber(_Config) ->
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_getUncleCountByBlockNumber">>,
+            <<"method">>  => <<"eth_getUncleCountByBlockNumber">>,
             <<"params">>  => [<<"latest">>]},
     ?assertMatch(#{<<"id">> := 1, <<"result">> := <<"0x0">>},
                  aerpc:dispatch(Req)),
     ok.
 
-method_ae_getUncleByBlockHashAndIndex(_Config) ->
+method_eth_getUncleByBlockHashAndIndex(_Config) ->
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_getUncleByBlockHashAndIndex">>,
+            <<"method">>  => <<"eth_getUncleByBlockHashAndIndex">>,
             <<"params">>  => [<<"0xdeadbeef">>, <<"0x0">>]},
     ?assertMatch(#{<<"id">> := 1, <<"result">> := null},
                  aerpc:dispatch(Req)),
     ok.
 
-method_ae_getUncleByBlockNumberAndIndex(_Config) ->
+method_eth_getUncleByBlockNumberAndIndex(_Config) ->
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_getUncleByBlockNumberAndIndex">>,
+            <<"method">>  => <<"eth_getUncleByBlockNumberAndIndex">>,
             <<"params">>  => [<<"latest">>, <<"0x0">>]},
     ?assertMatch(#{<<"id">> := 1, <<"result">> := null},
                  aerpc:dispatch(Req)),
     ok.
 
-method_ae_netPeerCount(_Config) ->
+method_net_peerCount(_Config) ->
     %% Hermetic: only verify dispatcher routes the method. Actual count
     %% requires aecore running and is covered by the integration suite.
-    routed(<<"ae_netPeerCount">>).
+    routed(<<"net_peerCount">>).
 
-method_ae_protocolVersion(_Config) ->
-    routed(<<"ae_protocolVersion">>).
+method_eth_protocolVersion(_Config) ->
+    routed(<<"eth_protocolVersion">>).
 
-method_ae_gasPrice(_Config) ->
-    routed(<<"ae_gasPrice">>).
+method_eth_gasPrice(_Config) ->
+    routed(<<"eth_gasPrice">>).
 
-method_ae_syncing(_Config) ->
-    routed(<<"ae_syncing">>).
+method_eth_syncing(_Config) ->
+    routed(<<"eth_syncing">>).
 
 %% Canonical Keccak-256 vector. If this fails, the underlying `sha3'
 %% dep is producing NIST SHA3-256 instead -- a release-blocking issue.
-method_ae_sha3_hello_world(_Config) ->
+method_web3_sha3_hello_world(_Config) ->
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_sha3">>,
+            <<"method">>  => <<"web3_sha3">>,
             <<"params">>  => [<<"0x68656c6c6f20776f726c64">>]},
     Expected = <<"0x47173285a8d7341e5e972fc677286384f802f8ef42a5ec5f03bbfa254cb01fad">>,
     ?assertEqual(#{<<"jsonrpc">> => <<"2.0">>,
@@ -378,10 +378,10 @@ method_ae_sha3_hello_world(_Config) ->
                  aerpc:dispatch(Req)),
     ok.
 
-method_ae_sha3_empty(_Config) ->
+method_web3_sha3_empty(_Config) ->
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_sha3">>,
+            <<"method">>  => <<"web3_sha3">>,
             <<"params">>  => [<<"0x">>]},
     Expected = <<"0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470">>,
     ?assertEqual(#{<<"jsonrpc">> => <<"2.0">>,
@@ -390,91 +390,91 @@ method_ae_sha3_empty(_Config) ->
                  aerpc:dispatch(Req)),
     ok.
 
-method_ae_sha3_invalid_params(_Config) ->
+method_web3_sha3_invalid_params(_Config) ->
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_sha3">>,
+            <<"method">>  => <<"web3_sha3">>,
             <<"params">>  => [<<"not-hex">>]},
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">> := -32602}},
                  aerpc:dispatch(Req)),
     ok.
 
-method_ae_chainId(_Config) ->
-    routed(<<"ae_chainId">>).
+method_eth_chainId(_Config) ->
+    routed(<<"eth_chainId">>).
 
-method_ae_netVersion(_Config) ->
-    routed(<<"ae_netVersion">>).
+method_net_version(_Config) ->
+    routed(<<"net_version">>).
 
-method_ae_getBlockByHash(_Config) ->
-    routed(<<"ae_getBlockByHash">>).
+method_eth_getBlockByHash(_Config) ->
+    routed(<<"eth_getBlockByHash">>).
 
-method_ae_getBlockByHash_invalid_params(_Config) ->
+method_eth_getBlockByHash_invalid_params(_Config) ->
     %% Non-boolean second arg triggers -32602 without touching the chain.
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_getBlockByHash">>,
+            <<"method">>  => <<"eth_getBlockByHash">>,
             <<"params">>  => [<<"kh_xxx">>, <<"not-a-bool">>]},
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">> := -32602}},
                  aerpc:dispatch(Req)),
     ok.
 
-method_ae_getBlockByNumber(_Config) ->
-    routed(<<"ae_getBlockByNumber">>).
+method_eth_getBlockByNumber(_Config) ->
+    routed(<<"eth_getBlockByNumber">>).
 
-method_ae_getBlockTransactionCountByHash(_Config) ->
-    routed(<<"ae_getBlockTransactionCountByHash">>).
+method_eth_getBlockTransactionCountByHash(_Config) ->
+    routed(<<"eth_getBlockTransactionCountByHash">>).
 
-method_ae_getBlockTransactionCountByNumber(_Config) ->
-    routed(<<"ae_getBlockTransactionCountByNumber">>).
+method_eth_getBlockTransactionCountByNumber(_Config) ->
+    routed(<<"eth_getBlockTransactionCountByNumber">>).
 
-method_ae_getBalance(_Config) ->
-    routed(<<"ae_getBalance">>).
+method_eth_getBalance(_Config) ->
+    routed(<<"eth_getBalance">>).
 
-method_ae_getBalance_invalid_address(_Config) ->
+method_eth_getBalance_invalid_address(_Config) ->
     %% Garbage address fails decoding before any chain call.
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_getBalance">>,
+            <<"method">>  => <<"eth_getBalance">>,
             <<"params">>  => [<<"not-an-address">>, <<"latest">>]},
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">> := -32602}},
                  aerpc:dispatch(Req)),
     ok.
 
-method_ae_getCode(_Config) ->
-    routed(<<"ae_getCode">>).
+method_eth_getCode(_Config) ->
+    routed(<<"eth_getCode">>).
 
-method_ae_getTransactionCount(_Config) ->
-    routed(<<"ae_getTransactionCount">>).
+method_eth_getTransactionCount(_Config) ->
+    routed(<<"eth_getTransactionCount">>).
 
-method_ae_getTransactionByHash(_Config) ->
-    routed(<<"ae_getTransactionByHash">>).
+method_eth_getTransactionByHash(_Config) ->
+    routed(<<"eth_getTransactionByHash">>).
 
-method_ae_getTransactionByBlockHashAndIndex(_Config) ->
-    routed(<<"ae_getTransactionByBlockHashAndIndex">>).
+method_eth_getTransactionByBlockHashAndIndex(_Config) ->
+    routed(<<"eth_getTransactionByBlockHashAndIndex">>).
 
-method_ae_getTransactionByBlockNumberAndIndex(_Config) ->
-    routed(<<"ae_getTransactionByBlockNumberAndIndex">>).
+method_eth_getTransactionByBlockNumberAndIndex(_Config) ->
+    routed(<<"eth_getTransactionByBlockNumberAndIndex">>).
 
-method_ae_getTransactionReceipt(_Config) ->
-    routed(<<"ae_getTransactionReceipt">>).
+method_eth_getTransactionReceipt(_Config) ->
+    routed(<<"eth_getTransactionReceipt">>).
 
-method_ae_getBlockReceipts_routed_by_tag(_Config) ->
+method_eth_getBlockReceipts_routed_by_tag(_Config) ->
     %% "latest" goes through the height-resolution path; chain-dep so
     %% only routing is asserted hermetically.
-    routed(<<"ae_getBlockReceipts">>, [<<"latest">>]).
+    routed(<<"eth_getBlockReceipts">>, [<<"latest">>]).
 
-method_ae_getBlockReceipts_routed_by_hash(_Config) ->
+method_eth_getBlockReceipts_routed_by_hash(_Config) ->
     %% A `kh_...' prefixed binary triggers the hash-resolution branch.
-    routed(<<"ae_getBlockReceipts">>, [<<"kh_anything">>]).
+    routed(<<"eth_getBlockReceipts">>, [<<"kh_anything">>]).
 
-method_ae_getBlockReceipts_invalid_params(_Config) ->
+method_eth_getBlockReceipts_invalid_params(_Config) ->
     %% Non-binary param fails the dispatcher guard.
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_getBlockReceipts">>,
+            <<"method">>  => <<"eth_getBlockReceipts">>,
             <<"params">>  => [42]},
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">> := -32602}},
@@ -583,21 +583,21 @@ log_store_indexed_predicate(_Config) ->
     ?assertNot(aerpc_log_store:indexed({10, 25})),
     ok.
 
-method_ae_feeHistory_routed(_Config) ->
-    routed(<<"ae_feeHistory">>, [<<"0x4">>, <<"latest">>]).
+method_eth_feeHistory_routed(_Config) ->
+    routed(<<"eth_feeHistory">>, [<<"0x4">>, <<"latest">>]).
 
-method_ae_feeHistory_invalid_params(_Config) ->
+method_eth_feeHistory_invalid_params(_Config) ->
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_feeHistory">>,
+            <<"method">>  => <<"eth_feeHistory">>,
             <<"params">>  => [<<"not-a-number">>, <<"latest">>]},
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">> := -32602}},
                  aerpc:dispatch(Req)),
     ok.
 
-method_ae_maxPriorityFeePerGas_routed(_Config) ->
-    routed(<<"ae_maxPriorityFeePerGas">>).
+method_eth_maxPriorityFeePerGas_routed(_Config) ->
+    routed(<<"eth_maxPriorityFeePerGas">>).
 
 %% Hermetic: percentile/2 is the internal estimator. Reach into it via
 %% the public API by faking a chain-less environment where `tips_at/2'
@@ -626,20 +626,20 @@ block_resolve_id_invalid_object(_Config) ->
                  aerpc_block:resolve_id(42)),
     ok.
 
-%% Dispatcher accepts the object form on ae_getBalance. Chain access
+%% Dispatcher accepts the object form on eth_getBalance. Chain access
 %% would fail in this hermetic env; only routing is asserted here.
-method_ae_getBalance_with_block_object(_Config) ->
-    routed(<<"ae_getBalance">>,
+method_eth_getBalance_with_block_object(_Config) ->
+    routed(<<"eth_getBalance">>,
            [<<"ak_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">>,
             #{<<"blockNumber">> => <<"0x10">>}]).
 
-method_ae_getRawTransactionByHash_routed(_Config) ->
-    routed(<<"ae_getRawTransactionByHash">>, [<<"th_anything">>]).
+method_eth_getRawTransactionByHash_routed(_Config) ->
+    routed(<<"eth_getRawTransactionByHash">>, [<<"th_anything">>]).
 
-method_ae_getRawTransactionByHash_invalid_params(_Config) ->
+method_eth_getRawTransactionByHash_invalid_params(_Config) ->
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_getRawTransactionByHash">>,
+            <<"method">>  => <<"eth_getRawTransactionByHash">>,
             <<"params">>  => [42]},
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">> := -32602}},
@@ -667,12 +667,12 @@ errors_batch_too_large_format(_Config) ->
     ?assertNotEqual(nomatch, binary:match(Msg, <<"1024">>)),
     ok.
 
-%% ae_getLogs over a too-wide range should now use the formatted
+%% eth_getLogs over a too-wide range should now use the formatted
 %% message (not just "Range too wide" with no size info).
-method_ae_getLogs_range_too_wide_message(_Config) ->
+method_eth_getLogs_range_too_wide_message(_Config) ->
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_getLogs">>,
+            <<"method">>  => <<"eth_getLogs">>,
             <<"params">>  =>
                 [#{<<"fromBlock">> => <<"0x0">>,
                    <<"toBlock">>   => <<"0x7d0">>}]},   %% 2000 generations
@@ -717,12 +717,12 @@ bloom_set_bits_known_vector(_Config) ->
     ?assertNotEqual(B1, B3),
     ok.
 
-method_ae_call(_Config) ->
+method_eth_call(_Config) ->
     %% Well-formed envelope, malformed `to' value -> -32602 (address
     %% decoding fails before dry-run is invoked).
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_call">>,
+            <<"method">>  => <<"eth_call">>,
             <<"params">>  => [#{<<"to">> => <<"not-a-contract-id">>},
                               <<"latest">>]},
     ?assertMatch(#{<<"id">> := 1,
@@ -730,32 +730,32 @@ method_ae_call(_Config) ->
                  aerpc:dispatch(Req)),
     ok.
 
-method_ae_call_missing_to(_Config) ->
+method_eth_call_missing_to(_Config) ->
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_call">>,
+            <<"method">>  => <<"eth_call">>,
             <<"params">>  => [#{}, <<"latest">>]},
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">> := -32602}},
                  aerpc:dispatch(Req)),
     ok.
 
-method_ae_call_invalid_params_shape(_Config) ->
+method_eth_call_invalid_params_shape(_Config) ->
     %% A non-map TxObj should be rejected by the dispatcher guard.
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_call">>,
+            <<"method">>  => <<"eth_call">>,
             <<"params">>  => [<<"not-a-map">>, <<"latest">>]},
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">> := -32602}},
                  aerpc:dispatch(Req)),
     ok.
 
-method_ae_call_invalid_input_hex(_Config) ->
+method_eth_call_invalid_input_hex(_Config) ->
     %% `input' present but not hex-decodable -> -32602.
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_call">>,
+            <<"method">>  => <<"eth_call">>,
             <<"params">>  => [#{<<"to">> =>
                                     <<"0x", (binary:copy(<<"00">>, 32))/binary>>,
                                 <<"input">> => <<"not-hex">>},
@@ -769,10 +769,10 @@ method_ae_call_invalid_input_hex(_Config) ->
                    when Code =:= -32602 orelse Code =:= -32603, Reply),
     ok.
 
-method_ae_estimateGas(_Config) ->
+method_eth_estimateGas(_Config) ->
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_estimateGas">>,
+            <<"method">>  => <<"eth_estimateGas">>,
             <<"params">>  => [#{<<"to">> => <<"not-a-contract-id">>}]},
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">> := -32602}},
@@ -812,28 +812,28 @@ jsonrpc_error_with_data(_Config) ->
                                       <<"data">>    => <<"0xdeadbeef">>}}, R),
     ok.
 
-method_ae_getLogs(_Config) ->
-    routed(<<"ae_getLogs">>).
+method_eth_getLogs(_Config) ->
+    routed(<<"eth_getLogs">>).
 
-method_ae_getLogs_invalid_params(_Config) ->
+method_eth_getLogs_invalid_params(_Config) ->
     %% Garbage `topics' shape (a bare binary instead of a list) fails
     %% before any chain access.
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_getLogs">>,
+            <<"method">>  => <<"eth_getLogs">>,
             <<"params">>  => [#{<<"topics">> => <<"not-a-list">>}]},
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">> := -32602}},
                  aerpc:dispatch(Req)),
     ok.
 
-method_ae_getLogs_range_too_wide(_Config) ->
+method_eth_getLogs_range_too_wide(_Config) ->
     %% A 0..2000 generation request exceeds the v1 max range cap; this is
     %% hermetically testable because the range check happens before any
     %% chain access.
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_getLogs">>,
+            <<"method">>  => <<"eth_getLogs">>,
             <<"params">>  =>
                 [#{<<"fromBlock">> => <<"0x0">>,
                    <<"toBlock">>   => <<"0x7d0">>}]},  %% 2000
@@ -842,65 +842,65 @@ method_ae_getLogs_range_too_wide(_Config) ->
                  aerpc:dispatch(Req)),
     ok.
 
-method_ae_getFilterChanges(_Config) ->
+method_eth_getFilterChanges(_Config) ->
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_getFilterChanges">>,
+            <<"method">>  => <<"eth_getFilterChanges">>,
             <<"params">>  => [<<"0x1">>]},
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">> := -32004}},
                  aerpc:dispatch(Req)),
     ok.
 
-method_ae_getFilterLogs(_Config) ->
+method_eth_getFilterLogs(_Config) ->
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_getFilterLogs">>,
+            <<"method">>  => <<"eth_getFilterLogs">>,
             <<"params">>  => [<<"0x1">>]},
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">> := -32004}},
                  aerpc:dispatch(Req)),
     ok.
 
-method_ae_newBlockFilter(_Config) ->
+method_eth_newBlockFilter(_Config) ->
     %% v1.5-deferred: filter registry not yet implemented.
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_newBlockFilter">>},
+            <<"method">>  => <<"eth_newBlockFilter">>},
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">> := -32004}},
                  aerpc:dispatch(Req)),
     ok.
 
-method_ae_newFilter(_Config) ->
+method_eth_newFilter(_Config) ->
     %% v1.5-deferred: filter registry not yet implemented.
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_newFilter">>,
+            <<"method">>  => <<"eth_newFilter">>,
             <<"params">>  => [#{<<"address">> => <<"ct_xxx">>}]},
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">> := -32004}},
                  aerpc:dispatch(Req)),
     ok.
 
-method_ae_newPendingTransactionFilter(_Config) ->
+method_eth_newPendingTransactionFilter(_Config) ->
     %% v1.5-deferred: filter registry not yet implemented.
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_newPendingTransactionFilter">>},
+            <<"method">>  => <<"eth_newPendingTransactionFilter">>},
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">> := -32004}},
                  aerpc:dispatch(Req)),
     ok.
 
-method_ae_sendRawTransaction(_Config) ->
+method_eth_sendRawTransaction(_Config) ->
     %% v1: write-path methods are explicitly out-of-scope and return
     %% -32601. Same observable shape as the catch-all, but kept as an
     %% explicit clause so the dispatcher table documents the
     %% deliberate exclusion.
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_sendRawTransaction">>,
+            <<"method">>  => <<"eth_sendRawTransaction">>,
             <<"params">>  => [<<"0xdeadbeef">>]},
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">>    := -32601,
@@ -908,11 +908,11 @@ method_ae_sendRawTransaction(_Config) ->
                  aerpc:dispatch(Req)),
     ok.
 
-method_ae_sendTransaction(_Config) ->
+method_eth_sendTransaction(_Config) ->
     %% v1: write-path stub. Node does not host wallet keys.
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_sendTransaction">>,
+            <<"method">>  => <<"eth_sendTransaction">>,
             <<"params">>  => [#{<<"from">> => <<"ak_xxx">>,
                                 <<"to">>   => <<"ak_yyy">>,
                                 <<"value">> => <<"0x1">>}]},
@@ -922,12 +922,12 @@ method_ae_sendTransaction(_Config) ->
                  aerpc:dispatch(Req)),
     ok.
 
-method_ae_sign(_Config) ->
+method_eth_sign(_Config) ->
     %% v1: write-path stub. AE accounts use ed25519, not secp256k1, and
     %% the eth signed-message prefix has no AE analogue.
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_sign">>,
+            <<"method">>  => <<"eth_sign">>,
             <<"params">>  => [<<"ak_xxx">>, <<"0xdeadbeef">>]},
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">>    := -32601,
@@ -935,11 +935,11 @@ method_ae_sign(_Config) ->
                  aerpc:dispatch(Req)),
     ok.
 
-method_ae_signTransaction(_Config) ->
-    %% v1: write-path stub. Same reasoning as ae_sign + ae_sendTransaction.
+method_eth_signTransaction(_Config) ->
+    %% v1: write-path stub. Same reasoning as eth_sign + eth_sendTransaction.
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_signTransaction">>,
+            <<"method">>  => <<"eth_signTransaction">>,
             <<"params">>  => [#{<<"from">> => <<"ak_xxx">>,
                                 <<"to">>   => <<"ak_yyy">>,
                                 <<"value">> => <<"0x1">>}]},
@@ -949,11 +949,11 @@ method_ae_signTransaction(_Config) ->
                  aerpc:dispatch(Req)),
     ok.
 
-method_ae_uninstallFilter(_Config) ->
+method_eth_uninstallFilter(_Config) ->
     %% v1.5-deferred: filter registry not yet implemented.
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_uninstallFilter">>,
+            <<"method">>  => <<"eth_uninstallFilter">>,
             <<"params">>  => [<<"0x1">>]},
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">> := -32004}},
@@ -963,20 +963,20 @@ method_ae_uninstallFilter(_Config) ->
 %% Over plain HTTP the subscribe methods return -32004 with a hint
 %% pointing at /v3/rpc/ws (real subs need a WS conn so the registry can
 %% monitor + push back).
-method_ae_subscribe_over_http(_Config) ->
+method_eth_subscribe_over_http(_Config) ->
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_subscribe">>,
+            <<"method">>  => <<"eth_subscribe">>,
             <<"params">>  => [<<"newHeads">>]},
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">> := -32004}},
                  aerpc:dispatch(Req)),
     ok.
 
-method_ae_unsubscribe_over_http(_Config) ->
+method_eth_unsubscribe_over_http(_Config) ->
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => <<"ae_unsubscribe">>,
+            <<"method">>  => <<"eth_unsubscribe">>,
             <<"params">>  => [<<"0x1">>]},
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">> := -32004}},

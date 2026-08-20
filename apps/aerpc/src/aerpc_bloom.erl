@@ -10,7 +10,7 @@
 %%% has bit 0 in `byte[255]' bit 0 (LSB) and bit 2047 in `byte[0]'
 %%% bit 7 (MSB).
 %%%
-%%% The hash family is the same one `ae_sha3' and `aec_hash:hash(evm, _)'
+%%% The hash family is the same one `web3_sha3' and `aec_hash:hash(evm, _)'
 %%% use -- the aeternity-flavoured `sha3' dep configured for eth-style
 %%% Keccak, not NIST SHA3-256. That is required for bloom-bit
 %%% interoperability with eth indexers.

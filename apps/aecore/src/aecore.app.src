@@ -102,6 +102,7 @@
                      {105, {aec_governance, ensure_env, []}},
                      {110, {aecore_env, check_env, []}},
                      {110, {aehttp_app, check_env, []}},
+                     {110, {aerpc_app, check_env, []}},
                      {110, {aec_consensus, check_env, []}},
                      {110, {aec_hard_forks, ensure_env, []}},
                      {110, {aec_dev_reward, ensure_env, []}},                    

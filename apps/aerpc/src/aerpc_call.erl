@@ -1,8 +1,8 @@
 %%%-------------------------------------------------------------------
 %%% @doc Read-only contract calls via `aec_dry_run:dry_run/4'.
 %%%
-%%% Powers `ae_call' (returns the raw FATE/AEVM return bytes) and
-%%% `ae_estimateGas' (returns the call's `gas_used'). Both methods
+%%% Powers `eth_call' (returns the raw FATE/AEVM return bytes) and
+%%% `eth_estimateGas' (returns the call's `gas_used'). Both methods
 %%% share the same dry-run path; the only difference is which field
 %%% of the resulting call object they project.
 %%%
@@ -66,6 +66,14 @@ call(_TxObj, _BlockId) ->
 estimate_gas(TxObj, BlockId)
   when is_map(TxObj), (is_binary(BlockId) orelse is_map(BlockId)) ->
     case do_dry_run(TxObj, BlockId) of
+        {ok, no_contract} ->
+            %% `to' has no contract code. Eth's estimate for a plain
+            %% value transfer is the 21000 intrinsic cost; AE has no
+            %% such constant and charges no gas for a spend, so report
+            %% zero. Without this clause `aect_call:gas_used/1' was
+            %% handed the `no_contract' atom and crashed the request --
+            %% and viem calls estimateGas against plain accounts.
+            {ok, <<"0x0">>};
         {ok, CallObj} ->
             {ok, aerpc_encoding:to_quantity(aect_call:gas_used(CallObj))};
         {revert, CallObj} ->

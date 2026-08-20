@@ -90,6 +90,14 @@ check_env() ->
                       %% health endpoint, so it follows maintenance mode.
                       <<"node_settings">> => Default0,
                       <<"hyperchain">>    => false,
+                      %% eth-compatible JSON-RPC (/v3/rpc, /v3/rpc/ws).
+                      %% Off by default: it is a non-standard surface for
+                      %% AE, its address encoding diverges from eth's, and
+                      %% eth_call / eth_estimateGas run through
+                      %% aec_dry_run -- the same unmetered compute the
+                      %% 'dry-run' group above is default-off to protect.
+                      %% An operator opts in per node.
+                      <<"rpc">>           => false,
                       <<"debug">>         => true,
                       <<"dry-run">>       => false,
                       <<"node-operator">> => false,
@@ -152,9 +160,14 @@ start_http_api(Target, LogicHandler) ->
     end,
 
     Paths0 = aehttp_api_router:get_paths(Target, LogicHandler),
-    Paths = case Target of
-                external -> aehttp_rpc_router:routes() ++ Paths0;
-                _        -> Paths0
+    %% The JSON-RPC routes are prepended so they are matched ahead of the
+    %% OpenAPI paths, and only on the external listener with the `rpc'
+    %% endpoint group enabled. Same operator switch as every other group:
+    %% `http > endpoints > rpc' in aeternity.yaml, resolved into
+    %% `enabled_endpoint_groups' by check_env/0 above.
+    Paths = case Target =:= external andalso rpc_enabled() of
+                true  -> aehttp_rpc_router:routes() ++ Paths0;
+                false -> Paths0
             end,
     Dispatch = cowboy_router:compile([{'_', Paths}]),
     Opts = #{ num_acceptors => PoolSize
@@ -198,6 +211,15 @@ get_and_parse_ip_address_from_config_or_env(CfgKey, App, EnvKey, Default) ->
 get_http_max_skip_body_length() ->
     aeu_env:config_value([<<"http">>, <<"protocol_options">>, <<"max_skip_body_length">>],
                          aehttp, [protocol_options, max_skip_body_length], ?DEFAULT_MAX_SKIP_BODY_LENGTH).
+
+%% Read the same `enabled_endpoint_groups' list the OpenAPI router uses,
+%% so `http > endpoints > rpc' and `http > endpoints > obsolete' behave
+%% for /v3/rpc exactly as they do for every other group.
+rpc_enabled() ->
+    case application:get_env(aehttp, enabled_endpoint_groups) of
+        {ok, Groups} when is_list(Groups) -> lists:member(<<"rpc">>, Groups);
+        _Other                            -> false
+    end.
 
 get_http_api_acceptors(external) ->
     aeu_env:config_value([<<"http">>, <<"external">>, <<"acceptors">>],

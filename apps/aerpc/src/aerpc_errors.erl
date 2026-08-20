@@ -9,7 +9,7 @@
 %%% The code allocations:
 %%%   -32003  execution reverted              (contract call)
 %%%   -32004  operation not supported         (FATE / write methods)
-%%%   -32005  range too wide                  (ae_getLogs)
+%%%   -32005  range too wide                  (eth_getLogs)
 %%%   -32006  batch too large                 (transport-level)
 %%%   -39001  block hash not on canonical     (EIP-1898 requireCanonical)
 %%%

@@ -1455,6 +1455,11 @@
                         "dry-run" : {
                             "description" : "External protected dry run endpoint",
                             "type" : "boolean"
+                        },
+                        "rpc" : {
+                            "description" : "Ethereum-compatible read-only JSON-RPC endpoint (POST /v3/rpc, WebSocket /v3/rpc/ws). Off by default: eth_call and eth_estimateGas run through dry-run, and addresses are emitted 32 bytes wide rather than in Ethereum's 20-byte form. See 'http > rpc' for its settings.",
+                            "type" : "boolean",
+                            "default" : false
                         }
                     }
                 },
@@ -1529,6 +1534,23 @@
                             "minimum" : 0,
                             "maximum" : 100,
                             "default" : 0
+                        }
+                    }
+                },
+                "rpc" : {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "max_batch_size" : {
+                            "description" : "Maximum number of requests in a single JSON-RPC batch on /v3/rpc. Larger batches are rejected with error -32006 before any of them is executed.",
+                            "type" : "integer",
+                            "minimum" : 1,
+                            "default" : 1024
+                        },
+                        "chain_id" : {
+                            "description" : "Numeric chain id reported by eth_chainId and net_version. Set this explicitly: the built-in per-network values are placeholders that are not registered with any chain-id registry, and two networks sharing an id break replay protection in client tooling.",
+                            "type" : "integer",
+                            "minimum" : 0
                         }
                     }
                 }

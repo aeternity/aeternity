@@ -44,7 +44,11 @@ extra_checks_test_() ->
       {"User configuration cannot contain 'fork_management > fork > version' lower or equal to Minerva protocol version (2)",
        fun invalid_fork_signalling_version/0},
       {"User configuration cannot contain 'fork_management > fork > version' lower or equal to the last scheduled hard fork version",
-       fun invalid_fork_signalling_version2/0}]
+       fun invalid_fork_signalling_version2/0},
+      {"User configuration cannot contain 'http > rpc > max_batch_size' below the schema minimum",
+       fun invalid_rpc_max_batch_size/0},
+      {"User configuration cannot contain an unknown key under 'http > rpc'",
+       fun unknown_rpc_key_rejected/0}]
      ++ positive_extra_checks_tests()}.
 
 extra_network_id_checks_test_() ->
@@ -284,7 +288,23 @@ test_data_config_files() ->
      filename:join([Dir, DataDir, "epoch_deprecated_miner.yaml"]),
      filename:join([Dir, DataDir, "epoch_deprecated_debug_api.yaml"]),
      filename:join([Dir, DataDir, "epoch_monitoring.yaml"]),
+     filename:join([Dir, DataDir, "epoch_rpc.yaml"]),
      filename:join([Dir, DataDir, "epoch_nice.yaml"])].
+
+%% `http > rpc > max_batch_size' has a schema minimum of 1: a cap of 0
+%% would reject every batch, including well-formed single-entry ones,
+%% and is far more likely to be a typo than an intent.
+invalid_rpc_max_batch_size() ->
+    {Dir, DataDir} = get_test_config_base(),
+    Config = filename:join([Dir, DataDir, "epoch_invalid_rpc_batch_size.yaml"]),
+    ?assertEqual({error, validation_failed}, aeu_env:check_config(Config)).
+
+%% `http > rpc' is additionalProperties:false, so a misspelled key is a
+%% hard error rather than a setting that silently never applies.
+unknown_rpc_key_rejected() ->
+    {Dir, DataDir} = get_test_config_base(),
+    Config = filename:join([Dir, DataDir, "epoch_invalid_rpc_unknown_key.yaml"]),
+    ?assertEqual({error, validation_failed}, aeu_env:check_config(Config)).
 
 get_test_config_base() ->
     %% differentiate between Eunit run in top directory and

@@ -1,0 +1,9 @@
+---
+peers: []
+
+mining:
+    beneficiary: "ak_DummyPubKeyDoNotEverUse999999999999999999999999999"
+
+http:
+    rpc:
+        max_batch_size: 0

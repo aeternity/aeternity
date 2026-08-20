@@ -6,9 +6,9 @@
 %%% micro-blocks beneath it. The `number' field is the key-block
 %%% height; transactions are the flat-list of all micro-block txs.
 %%%
-%%% Hash and address-like fields are emitted in their AE-native form
-%%% (`kh_...', `ak_...', etc.) per project policy: this layer does
-%%% not map AE pubkeys onto 20-byte Eth addresses.
+%%% Hash and address-like fields go out as `0x' hex through
+%%% `aerpc_encoding' -- see that module for why addresses are 32 bytes
+%%% wide rather than eth's 20.
 %%% @end
 %%%-------------------------------------------------------------------
 -module(aerpc_block).
@@ -354,6 +354,10 @@ signed_tx_gas(SignedTx) ->
     catch _:_ -> 0
     end.
 
+%% `fullTransactions: true' emits eth transaction objects; `false' emits
+%% bare hashes. Both walk the generation's micro-blocks in the same
+%% order, so a tx's position here is the `transactionIndex' that
+%% `eth_getTransactionByHash' and the receipt report for it.
 transactions_field(MBs, Height, BlockHash, true) ->
     flatten_txs(MBs, Height, BlockHash);
 transactions_field(MBs, _Height, _Hash, false) ->
@@ -361,26 +365,10 @@ transactions_field(MBs, _Height, _Hash, false) ->
       || MB <- MBs, STx <- aec_blocks:txs(MB) ].
 
 flatten_txs(MBs, Height, BlockHash) ->
-    [ serialize_tx(STx, Height, BlockHash) ||
-        MB <- MBs, STx <- aec_blocks:txs(MB) ].
-
-serialize_tx(SignedTx, Height, BlockHash) ->
-    TxHash = aetx_sign:hash(SignedTx),
-    try
-        BlockHashEnc =
-            case BlockHash of
-                <<>> -> <<"none">>;
-                _    -> aeser_api_encoder:encode(micro_block_hash, BlockHash)
-            end,
-        MetaData = #{
-            <<"block_height">> => Height,
-            <<"block_hash">>   => BlockHashEnc,
-            <<"hash">>         => aeser_api_encoder:encode(tx_hash, TxHash),
-            <<"encoded_tx">>   => aeser_api_encoder:encode(
-                                     transaction,
-                                     aetx_sign:serialize_to_binary(SignedTx))
-        },
-        aetx_sign:serialize_for_client_inner(SignedTx, MetaData)
-    catch _:_ ->
-        #{<<"hash">> => aerpc_encoding:format_tx_hash(TxHash)}
-    end.
+    Flat = [STx || MB <- MBs, STx <- aec_blocks:txs(MB)],
+    {Txs, _N} =
+        lists:mapfoldl(
+          fun(STx, Idx) ->
+              {aerpc_tx:to_eth_tx(STx, BlockHash, Height, Idx), Idx + 1}
+          end, 0, Flat),
+    Txs.

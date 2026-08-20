@@ -1,5 +1,5 @@
 %%%-------------------------------------------------------------------
-%%% @doc Real-time log indexer for `ae_getLogs'.
+%%% @doc Real-time log indexer for `eth_getLogs'.
 %%%
 %%% Subscribes to `aec_events:top_changed' and pushes the new
 %%% generation's logs into [`aerpc_log_store'](aerpc_log_store.erl).

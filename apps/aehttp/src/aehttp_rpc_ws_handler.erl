@@ -2,13 +2,13 @@
 %%% @doc Cowboy WebSocket handler for the JSON-RPC subscribe transport.
 %%%
 %%% Same wire format as the HTTP endpoint: each text frame is one
-%%% JSON-RPC envelope (single request or batch). For `ae_subscribe' /
-%%% `ae_unsubscribe' the handler talks to `aerpc_subscriptions'
+%%% JSON-RPC envelope (single request or batch). For `eth_subscribe' /
+%%% `eth_unsubscribe' the handler talks to `aerpc_subscriptions'
 %%% directly so the registry can monitor this conn's pid and route
 %%% async notifications back. All other methods delegate to
 %%% `aerpc:dispatch/1', exactly like the HTTP path.
 %%%
-%%% Notification frames have eth's standard `ae_subscription' shape
+%%% Notification frames have eth's standard `eth_subscription' shape
 %%% (no `id', a `params: {subscription, result}' object).
 %%% @end
 %%%-------------------------------------------------------------------
@@ -67,9 +67,19 @@ handle_frame(Frame) ->
     end.
 
 handle_request(Batch) when is_list(Batch) ->
-    [handle_request(Req) || Req <- Batch];
+    %% This transport cannot hand the whole batch to `aerpc:dispatch/1'
+    %% (subscribe/unsubscribe need this connection's pid), so apply the
+    %% same cap here rather than leaving the WS path uncapped.
+    Max = aerpc:max_batch_size(),
+    case length(Batch) > Max of
+        true ->
+            {error, Code, Msg} = aerpc_errors:batch_too_large(Max),
+            aerpc_jsonrpc:error(null, Code, Msg);
+        false ->
+            [handle_request(Req) || Req <- Batch]
+    end;
 handle_request(#{<<"jsonrpc">> := ?JSONRPC_VSN,
-                 <<"method">>  := <<"ae_subscribe">>} = Req) ->
+                 <<"method">>  := <<"eth_subscribe">>} = Req) ->
     Id = maps:get(<<"id">>, Req, null),
     case maps:get(<<"params">>, Req, []) of
         [<<"newHeads">>] ->
@@ -86,7 +96,7 @@ handle_request(#{<<"jsonrpc">> := ?JSONRPC_VSN,
             aerpc_jsonrpc:error(Id, -32602, <<"Invalid params">>)
     end;
 handle_request(#{<<"jsonrpc">> := ?JSONRPC_VSN,
-                 <<"method">>  := <<"ae_unsubscribe">>} = Req) ->
+                 <<"method">>  := <<"eth_unsubscribe">>} = Req) ->
     Id = maps:get(<<"id">>, Req, null),
     case maps:get(<<"params">>, Req, []) of
         [SubId] when is_binary(SubId) ->
@@ -109,6 +119,6 @@ do_subscribe(Id, Kind, Criteria) ->
 
 notification_frame(SubId, Result) ->
     #{<<"jsonrpc">> => ?JSONRPC_VSN,
-      <<"method">>  => <<"ae_subscription">>,
+      <<"method">>  => <<"eth_subscription">>,
       <<"params">>  => #{<<"subscription">> => SubId,
                          <<"result">>       => Result}}.

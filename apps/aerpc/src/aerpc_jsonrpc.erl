@@ -28,7 +28,7 @@ error(Id, Code, Message) when is_integer(Code), is_binary(Message) ->
                          <<"message">> => Message}}.
 
 %% Variant that includes the optional JSON-RPC 2.0 `data' field on the
-%% error object. Used by ae_call / ae_estimateGas to surface the FATE
+%% error object. Used by eth_call / eth_estimateGas to surface the FATE
 %% revert payload (eth convention: callers parse `error.data' as the
 %% raw return bytes of the failing call).
 -spec error(term(), integer(), binary(), term()) -> map().

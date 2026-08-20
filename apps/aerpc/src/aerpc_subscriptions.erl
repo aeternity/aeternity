@@ -8,11 +8,11 @@
 %%% Two subscription kinds today:
 %%%
 %%%   * `newHeads' -- fires once per new generation; payload is the
-%%%     eth-shaped block (`ae_getBlockByNumber' result with full-tx
+%%%     eth-shaped block (`eth_getBlockByNumber' result with full-tx
 %%%     hashes only).
 %%%   * `logs'     -- fires once per matching log inside a new
 %%%     generation; payload is the same map shape as one element of
-%%%     `ae_getLogs'.
+%%%     `eth_getLogs'.
 %%%
 %%% Subscription IDs are hex `QUANTITY' (matches the eth wire
 %%% convention) and allocated from a monotonic counter. They are
@@ -185,6 +185,13 @@ maybe_demonitor(Pid, #state{monitors = M, by_owner = O} = State) ->
             State#state{monitors = maps:remove(Pid, M)}
     end.
 
+fanout(_KBHash, #state{by_id = Subs}) when map_size(Subs) =:= 0 ->
+    %% No subscribers: do nothing at all. The payload build below fetches
+    %% the whole generation and blooms every log in it, so running it
+    %% eagerly would cost a full generation walk per key-block on every
+    %% node -- including the overwhelmingly common case of a node with no
+    %% WebSocket clients attached.
+    ok;
 fanout(KBHash, State) ->
     %% Build the new-head payload once; reused across all `newHeads' subs.
     BlockMap = block_for_notification(KBHash),
@@ -212,7 +219,7 @@ fanout_logs(Pid, SubId, HashEnc, undefined) ->
     %% No filter -> emit every log in the new generation.
     fanout_logs(Pid, SubId, HashEnc, #{});
 fanout_logs(Pid, SubId, HashEnc, Crit) when is_map(Crit) ->
-    %% Reuse the existing ae_getLogs filter implementation for one-block
+    %% Reuse the existing eth_getLogs filter implementation for one-block
     %% scans. The blockHash constraint keeps the walk bounded.
     Filter = Crit#{<<"blockHash">> => HashEnc},
     case aerpc_logs:get_logs(Filter) of
