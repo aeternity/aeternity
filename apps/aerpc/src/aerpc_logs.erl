@@ -135,29 +135,22 @@ decode_many_addresses([H | T], Acc) when is_binary(H) ->
 decode_many_addresses(_, _) ->
     {error, -32602, <<"Invalid params">>}.
 
+%% One choke-point for inbound addresses, shared with every other
+%% address-taking method. This module used to keep its own copy that
+%% accepted 32-byte hex only, so a filter carrying the 20-byte address
+%% the logs themselves emit was rejected as invalid.
 decode_one_address(Bin) ->
-    case Bin of
-        <<"ct_", _/binary>> ->
-            case aeapi:decode_contract_pubkey(Bin) of
-                {ok, B} -> {ok, B};
-                _       -> {error, -32602, <<"Invalid address">>}
-            end;
-        <<"ak_", _/binary>> ->
-            case aeapi:decode_account_pubkey(Bin) of
-                {ok, B} -> {ok, B};
-                _       -> {error, -32602, <<"Invalid address">>}
-            end;
-        <<"0x", _/binary>> ->
-            try
-                B = aerpc_encoding:from_hex_data(Bin),
-                case byte_size(B) of
-                    32 -> {ok, B};
-                    _  -> {error, -32602, <<"Invalid address">>}
-                end
-            catch _:_ -> {error, -32602, <<"Invalid address">>}
-            end;
-        _ ->
-            {error, -32602, <<"Invalid address">>}
+    case aerpc_account:decode_address(Bin) of
+        {ok, Pubkey} ->
+            {ok, Pubkey};
+        {unknown, _Addr20} ->
+            %% Index complete and nothing derives it, so no contract can
+            %% have emitted a log from it. A filter on it matches
+            %% nothing, which is what an unmatchable sentinel gives us
+            %% without a special case downstream.
+            {ok, unmatchable};
+        {error, _, _} = Err ->
+            Err
     end.
 
 parse_topics(List) when is_list(List), length(List) =< 4 ->

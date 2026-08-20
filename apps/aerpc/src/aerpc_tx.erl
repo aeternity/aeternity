@@ -35,6 +35,7 @@
         , block_receipts_by_height/1
         , raw_by_hash/1
         , to_eth_tx/4
+        , gas_used_in_generation/1
         ]).
 
 %% ===================================================================
@@ -51,8 +52,14 @@ by_hash(HashIn) when is_binary(HashIn) ->
                     {ok, null};
                 {mempool, SignedTx} ->
                     {ok, serialize_pending(SignedTx)};
-                {BlockHash, SignedTx} when is_binary(BlockHash) ->
-                    {ok, serialize_mined(SignedTx, BlockHash, TxHash)}
+                {MicroHash, SignedTx} when is_binary(MicroHash) ->
+                    %% find_tx_with_location/1 returns the MICRO-block
+                    %% hash. Eth's `blockHash' must be the block the tx
+                    %% is in as eth_getBlockByHash understands it, which
+                    %% here is the generation's key block -- emitting the
+                    %% micro-block hash made the same tx read two
+                    %% different ways disagree.
+                    {ok, serialize_mined(SignedTx, MicroHash, TxHash)}
             end;
         {error, _, _} = Err ->
             Err
@@ -103,11 +110,18 @@ receipt(HashIn) when is_binary(HashIn) ->
                 {mempool, _Stx} ->
                     %% Eth: receipts are unavailable for pending txs.
                     {ok, null};
-                {BlockHash, _SignedTx} when is_binary(BlockHash) ->
-                    %% Walk the block to find this tx's position, accumulate
-                    %% prior cumulative-gas, and build the receipt with the
-                    %% correct transactionIndex / cumulativeGasUsed.
-                    single_receipt(BlockHash, TxHash)
+                {MicroHash, _SignedTx} when is_binary(MicroHash) ->
+                    %% Walk the generation to find this tx's position,
+                    %% accumulate prior cumulative-gas, and build the
+                    %% receipt with the correct transactionIndex /
+                    %% cumulativeGasUsed. The generation is keyed by the
+                    %% KEY-block hash; handing get_generation_by_hash/2
+                    %% the micro-block hash this returns made every
+                    %% receipt come back null.
+                    case generation_hash(MicroHash) of
+                        {ok, KBHash} -> single_receipt(KBHash, TxHash);
+                        error        -> {ok, null}
+                    end
             end;
         {error, _, _} = Err ->
             Err
@@ -176,74 +190,131 @@ encode_signed_tx(SignedTx) ->
 %% Internal
 %% ===================================================================
 
-%% @doc Walk the block's tx list to find the requested tx, accumulating
-%% cumulative-gas as we go. Returns the receipt with correct
-%% transactionIndex + cumulativeGasUsed, or `{ok, null}' if the tx is
-%% somehow not in the block (defensive — shouldn't happen since
-%% find_tx_with_location/1 just returned this block hash).
-single_receipt(BlockHash, TxHash) ->
-    case aec_chain:get_generation_by_hash(BlockHash, forward) of
+%% @doc Resolve any block hash to the key-block hash of its generation.
+%% `aec_chain:get_generation_by_hash/2' and eth's `blockHash' are both
+%% keyed by the key block, while `find_tx_with_location/1' hands back the
+%% micro block the tx actually sits in.
+-spec generation_hash(binary()) -> {ok, binary()} | error.
+generation_hash(BlockHash) ->
+    case aec_chain:get_header(BlockHash) of
+        {ok, Header} ->
+            case aec_headers:type(Header) of
+                micro -> {ok, aec_headers:prev_key_hash(Header)};
+                key   -> {ok, BlockHash}
+            end;
+        error ->
+            error
+    end.
+
+%% @doc Flatten a generation into `{SignedTx, MicroBlockHash}' pairs in
+%% block order. The micro-block hash is carried per tx because the calls
+%% trie is read AT a block's state and resets per generation: at the
+%% key-block hash the generation's own calls do not exist yet, so a
+%% contract call must be looked up at the state of the micro block that
+%% contains it. Hashing is done once per micro block, not once per tx.
+-spec generation_txs(binary()) -> {ok, [{term(), binary()}]} | error.
+generation_txs(KBHash) ->
+    case aec_chain:get_generation_by_hash(KBHash, forward) of
         {ok, #{micro_blocks := MBs}} ->
-            Flat = lists:flatten([aec_blocks:txs(MB) || MB <- MBs]),
-            BlockNumber = block_number(BlockHash),
-            walk_to_tx(Flat, TxHash, BlockHash, BlockNumber, 0, 0);
+            {ok, lists:append([micro_block_txs(MB) || MB <- MBs])};
+        error ->
+            error
+    end.
+
+micro_block_txs(MB) ->
+    MBHash = case aec_blocks:hash_internal_representation(MB) of
+                 {ok, H} -> H;
+                 _Other  -> <<>>
+             end,
+    [{STx, MBHash} || STx <- aec_blocks:txs(MB)].
+
+%% @doc Walk the generation's tx list to find the requested tx,
+%% accumulating cumulative-gas as we go. Returns the receipt with correct
+%% transactionIndex + cumulativeGasUsed, or `{ok, null}' if the tx is
+%% somehow not in the generation.
+single_receipt(KBHash, TxHash) ->
+    case generation_txs(KBHash) of
+        {ok, Flat} ->
+            BlockNumber = block_number(KBHash),
+            walk_to_tx(Flat, TxHash, KBHash, BlockNumber, 0, 0);
         error ->
             {ok, null}
     end.
 
 %% @doc Build receipts for every tx in the generation, in block order.
 %% Returns `null' if the block doesn't exist, `[]' if it has no txs.
-fold_block_receipts(BlockHash) ->
-    case aec_chain:get_generation_by_hash(BlockHash, forward) of
-        {ok, #{micro_blocks := MBs}} ->
-            Flat = lists:flatten([aec_blocks:txs(MB) || MB <- MBs]),
-            BlockNumber = block_number(BlockHash),
-            fold_receipts_inner(Flat, BlockHash, BlockNumber, 0, 0, []);
+fold_block_receipts(KBHash) ->
+    case generation_txs(KBHash) of
+        {ok, Flat} ->
+            BlockNumber = block_number(KBHash),
+            fold_receipts_inner(Flat, KBHash, BlockNumber, 0, 0, []);
         error ->
             null
     end.
 
 fold_receipts_inner([], _BH, _BN, _Idx, _Cum, Acc) ->
     lists:reverse(Acc);
-fold_receipts_inner([SignedTx | Rest], BlockHash, BlockNumber, Idx, Cum, Acc) ->
+fold_receipts_inner([{SignedTx, MBHash} | Rest], KBHash, BlockNumber,
+                    Idx, Cum, Acc) ->
     TxHash = aetx_sign:hash(SignedTx),
     {Receipt, NewCum} =
-        build_receipt(SignedTx, BlockHash, TxHash, BlockNumber, Idx, Cum),
-    fold_receipts_inner(Rest, BlockHash, BlockNumber, Idx + 1, NewCum,
+        build_receipt(SignedTx, KBHash, MBHash, TxHash, BlockNumber, Idx, Cum),
+    fold_receipts_inner(Rest, KBHash, BlockNumber, Idx + 1, NewCum,
                         [Receipt | Acc]).
 
 walk_to_tx([], _TxHash, _BH, _BN, _Idx, _Cum) ->
     {ok, null};
-walk_to_tx([SignedTx | Rest], TxHash, BlockHash, BlockNumber, Idx, Cum) ->
+walk_to_tx([{SignedTx, MBHash} | Rest], TxHash, KBHash, BlockNumber, Idx, Cum) ->
     case aetx_sign:hash(SignedTx) of
         TxHash ->
             {Receipt, _NewCum} =
-                build_receipt(SignedTx, BlockHash, TxHash, BlockNumber, Idx, Cum),
+                build_receipt(SignedTx, KBHash, MBHash, TxHash, BlockNumber,
+                              Idx, Cum),
             {ok, Receipt};
         _Other ->
             %% Advance cumulative-gas with this tx's gas-used so that the
             %% match further down sees the right running total.
-            NewCum = Cum + gas_used_for_signed_tx(SignedTx, BlockHash),
-            walk_to_tx(Rest, TxHash, BlockHash, BlockNumber, Idx + 1, NewCum)
+            NewCum = Cum + gas_used_for_signed_tx(SignedTx, MBHash),
+            walk_to_tx(Rest, TxHash, KBHash, BlockNumber, Idx + 1, NewCum)
+    end.
+
+%% @doc Total gas actually consumed by a generation: the sum of the same
+%% per-tx figures the receipts report, so `block.gasUsed' equals the sum
+%% of its own receipts by construction. That equality is a cross-check
+%% indexers run, and summing declared gas limits instead could never
+%% satisfy it.
+-spec gas_used_in_generation(binary()) -> non_neg_integer().
+gas_used_in_generation(KBHash) ->
+    case generation_txs(KBHash) of
+        {ok, Flat} ->
+            lists:sum([gas_used_for_signed_tx(STx, MBHash)
+                       || {STx, MBHash} <- Flat]);
+        error ->
+            0
     end.
 
 %% @doc Build one receipt with explicit TxIndex / CumulativeBefore inputs.
 %% Returns `{Receipt, CumulativeAfter}' so a caller iterating across a
 %% block can thread the running total.
--spec build_receipt(aetx_sign:signed_tx(), binary(), binary(),
+%% `KBHash' is what the receipt reports as `blockHash'; `MBHash' is what
+%% the call-object lookup is performed at. They are different hashes and
+%% conflating them is what made every contract receipt read gasUsed 0x0,
+%% status 0x1 -- indistinguishable from success, including for reverts.
+-spec build_receipt(aetx_sign:signed_tx(), binary(), binary(), binary(),
                     non_neg_integer(), non_neg_integer(),
                     non_neg_integer()) ->
     {map(), non_neg_integer()}.
-build_receipt(SignedTx, BlockHash, TxHash, BlockNumber, TxIndex, CumulativeBefore) ->
+build_receipt(SignedTx, KBHash, MBHash, TxHash, BlockNumber, TxIndex,
+              CumulativeBefore) ->
     Tx = aetx_sign:tx(SignedTx),
     {Type, _Body} = aetx:specialize_type(Tx),
     Origin = aetx:origin(Tx),
-    {GasUsed, Status} = gas_and_status(Type, Tx, BlockHash),
+    {GasUsed, Status} = gas_and_status(Type, Tx, MBHash),
     Cumulative = CumulativeBefore + GasUsed,
     Receipt = #{
         <<"transactionHash">>   => aerpc_encoding:format_tx_hash(TxHash),
         <<"transactionIndex">>  => aerpc_encoding:to_quantity(TxIndex),
-        <<"blockHash">>         => aerpc_encoding:format_key_block_hash(BlockHash),
+        <<"blockHash">>         => aerpc_encoding:format_key_block_hash(KBHash),
         <<"blockNumber">>       => aerpc_encoding:to_quantity(BlockNumber),
         <<"from">>              => format_account_or_null(Origin),
         <<"to">>                => to_field(Type, Tx),
@@ -268,26 +339,27 @@ block_number(BlockHash) ->
 %% pull the real gas-used + status from the call object; non-contract
 %% txs always succeed (status 0x1) and report 0 gas (AE spend-tx has no
 %% EVM-style metering -- documented in plan 03).
-gas_and_status(contract_call_tx, Tx, BlockHash) ->
-    case call_result(Tx, BlockHash) of
+gas_and_status(contract_call_tx, Tx, MBHash) ->
+    case call_result(Tx, MBHash) of
         {ok, GasUsed, Status} -> {GasUsed, Status};
         none                  -> {0, <<"0x1">>}
     end;
-gas_and_status(contract_create_tx, Tx, BlockHash) ->
-    case call_result(Tx, BlockHash) of
+gas_and_status(contract_create_tx, Tx, MBHash) ->
+    case call_result(Tx, MBHash) of
         {ok, GasUsed, Status} -> {GasUsed, Status};
         none                  -> {0, <<"0x1">>}
     end;
-gas_and_status(_Other, _Tx, _BlockHash) ->
+gas_and_status(_Other, _Tx, _MBHash) ->
     {0, <<"0x1">>}.
 
-%% Best-effort gas-used lookup for a single tx; mirrors the path
-%% gas_and_status/3 uses but returns just the integer. Non-contract
-%% txs contribute 0 to the running cumulative.
-gas_used_for_signed_tx(SignedTx, BlockHash) ->
+%% Gas-used lookup for a single tx; mirrors the path gas_and_status/3
+%% uses but returns just the integer. Non-contract txs contribute 0 to
+%% the running cumulative. `MBHash' is the micro-block hash, not the
+%% generation's key block -- see call_result/2.
+gas_used_for_signed_tx(SignedTx, MBHash) ->
     Tx = aetx_sign:tx(SignedTx),
     {Type, _Body} = aetx:specialize_type(Tx),
-    {Gas, _Status} = gas_and_status(Type, Tx, BlockHash),
+    {Gas, _Status} = gas_and_status(Type, Tx, MBHash),
     Gas.
 
 %% `aec_chain:get_contract_call/3' wants {ContractPubkey, CallId,
@@ -408,27 +480,32 @@ serialize_pending(SignedTx) ->
     %% Eth reports a mempool tx with null block position.
     to_eth_tx(SignedTx, null, null, null).
 
-serialize_mined(SignedTx, BlockHash, TxHash) ->
-    BlockNumber = block_number(BlockHash),
-    TxIndex     = tx_index_in_block(BlockHash, TxHash),
-    to_eth_tx(SignedTx, BlockHash, BlockNumber, TxIndex).
+%% `MicroHash' is what find_tx_with_location/1 returns; both the eth
+%% `blockHash' and the transactionIndex are properties of the generation,
+%% so resolve to the key block first.
+serialize_mined(SignedTx, MicroHash, TxHash) ->
+    case generation_hash(MicroHash) of
+        {ok, KBHash} ->
+            BlockNumber = block_number(KBHash),
+            TxIndex     = tx_index_in_block(KBHash, TxHash),
+            to_eth_tx(SignedTx, KBHash, BlockNumber, TxIndex);
+        error ->
+            to_eth_tx(SignedTx, null, null, null)
+    end.
 
 %% @doc Position of a tx inside its generation, or `null' if it is not
 %% found there. Eth requires `transactionIndex' on a mined tx, and it
 %% is the flat index across the generation's micro-blocks -- the same
 %% ordering `eth_getBlockByNumber' uses for its `transactions' array,
 %% so the two agree by construction.
-tx_index_in_block(BlockHash, TxHash) ->
-    case aec_chain:get_generation_by_hash(BlockHash, forward) of
-        {ok, #{micro_blocks := MBs}} ->
-            Flat = lists:flatten([aec_blocks:txs(MB) || MB <- MBs]),
-            index_of(TxHash, Flat, 0);
-        error ->
-            null
+tx_index_in_block(KBHash, TxHash) ->
+    case generation_txs(KBHash) of
+        {ok, Flat} -> index_of(TxHash, Flat, 0);
+        error      -> null
     end.
 
 index_of(_TxHash, [], _N) -> null;
-index_of(TxHash, [STx | Rest], N) ->
+index_of(TxHash, [{STx, _MBHash} | Rest], N) ->
     case aetx_sign:hash(STx) of
         TxHash -> N;
         _Other -> index_of(TxHash, Rest, N + 1)

@@ -80,22 +80,30 @@ read_only_test_() ->
       fun() -> ?assertEqual({ok, []}, dispatch(<<"eth_accounts">>)) end}].
 
 %% ===================================================================
-%% Encoding: 0x everywhere, 32-byte wide addresses
+%% Encoding: 0x everywhere, 20-byte addresses, 32-byte hashes
 %% ===================================================================
 
 encoding_test_() ->
     Pubkey = <<7:32/unit:8>>,
     Hash   = <<9:32/unit:8>>,
-    [{"addresses and hashes are 0x + 64 hex, never ak_/ct_/kh_/th_",
+    [{"addresses are 0x + 40 hex, hashes 0x + 64, all lower-case",
       fun() ->
+          %% Widths are not interchangeable: ethers validates every
+          %% address-typed field and reads a non-20-byte string in a
+          %% request as an ENS name.
+          [begin
+               ?assertMatch(<<"0x", _/binary>>, V),
+               ?assertEqual(42, byte_size(V)),
+               ?assertEqual(V, string:lowercase(V))
+           end
+           || V <- [aerpc_encoding:format_account(Pubkey),
+                    aerpc_encoding:format_contract(Pubkey)]],
           [begin
                ?assertMatch(<<"0x", _/binary>>, V),
                ?assertEqual(66, byte_size(V)),
                ?assertEqual(V, string:lowercase(V))
            end
-           || V <- [aerpc_encoding:format_account(Pubkey),
-                    aerpc_encoding:format_contract(Pubkey),
-                    aerpc_encoding:format_key_block_hash(Hash),
+           || V <- [aerpc_encoding:format_key_block_hash(Hash),
                     aerpc_encoding:format_micro_block_hash(Hash),
                     aerpc_encoding:format_tx_hash(Hash)]]
       end},
@@ -112,10 +120,10 @@ encoding_test_() ->
           ?assertEqual({ok, aerpc_encoding:zero_word()},
                        dispatch(<<"eth_getStorageAt">>))
       end},
-     {"AE-native address forms are still accepted on input",
+     {"the 32-byte form is still accepted on input",
       fun() ->
-          %% Only the emitted side is eth-shaped; an AE-aware caller
-          %% must not be locked out.
+          %% Only the emitted side narrows; an AE-aware caller holding a
+          %% full pubkey must not be locked out.
           Wide = aerpc_encoding:to_hex_data(Pubkey),
           ?assertEqual({ok, Pubkey}, aerpc_account:decode_address(Wide)),
           ?assertMatch({error, -32602, _},
@@ -242,10 +250,11 @@ eth_tx_shape_test_() ->
            %% exports recipient_id/1 and not recipient_pubkey/1, so the
            %% earlier function_exported/3 probe always missed and every
            %% spend reported to: null.
-           ?assertEqual(aerpc_encoding:to_hex_data(Recipient),
+           ?assertEqual(aerpc_encoding:format_account(Recipient),
                         maps:get(<<"to">>, Tx)),
-           ?assertEqual(aerpc_encoding:to_hex_data(Sender),
+           ?assertEqual(aerpc_encoding:format_account(Sender),
                         maps:get(<<"from">>, Tx)),
+           ?assertEqual(42, byte_size(maps:get(<<"to">>, Tx))),
            ?assertEqual(<<"0x1f4">>, maps:get(<<"value">>, Tx)),
            ?assertEqual(<<"0x7">>,   maps:get(<<"nonce">>, Tx)),
            ?assertEqual(<<"0x0">>,   maps:get(<<"gasPrice">>, Tx)),

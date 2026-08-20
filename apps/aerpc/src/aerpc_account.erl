@@ -3,12 +3,17 @@
 %%%
 %%% This module is the single choke-point for address decoding: any
 %%% method that takes an address as input routes through
-%%% `decode_address/1', which accepts the canonical AE forms
-%%% (`ak_...', `ct_...') as well as `0x'-prefixed 32-byte hex.
+%%% `decode_address/1', which accepts all four forms a caller can
+%%% plausibly send -- `ak_...', `ct_...', 32-byte `0x' hex, and the
+%%% 20-byte `0x' hex this layer itself emits.
 %%%
-%%% Per project policy this layer never re-derives an Eth 20-byte
-%%% address; pubkeys are emitted in their native AE form by callers
-%%% that need them.
+%%% The 20-byte form resolves through `aerpc_addr_index'. Its three-way
+%%% answer is why `decode_address/1' has three return shapes rather than
+%%% two: `{unknown, Addr20}' means the index is complete and no such
+%%% account exists, which is where eth's zero/empty semantics apply, and
+%%% is deliberately distinct from the error returned while the index is
+%%% still building. Collapsing those two would mean reporting balance
+%%% zero for an account we simply have not indexed yet.
 %%% @end
 %%%-------------------------------------------------------------------
 -module(aerpc_account).
@@ -49,6 +54,10 @@ code(AddrIn) when is_binary(AddrIn) ->
                 {error, _Reason} ->
                     {ok, <<"0x">>}
             end;
+        {unknown, _Addr20} ->
+            %% Index complete and nothing maps to it: no contract there,
+            %% which is eth's empty-code answer.
+            {ok, <<"0x">>};
         {error, _, _} = Err ->
             Err
     end;
@@ -75,11 +84,13 @@ tx_count(_AddrIn, _Tag) ->
     {error, -32602, <<"Invalid params">>}.
 
 %% @doc Decode an address from any accepted form. Supports:
+%%   * `0x' + 40 hex chars -- the eth-shaped 20-byte address this layer
+%%     emits; resolved back to a pubkey via `aerpc_addr_index'
+%%   * `0x' + 64 hex chars -- raw 32-byte pubkey (lossless wide form)
 %%   * `ak_...' -- AE account pubkey
 %%   * `ct_...' -- AE contract pubkey
-%%   * `0x' + 64 hex chars -- raw 32-byte hex (lossless wide form)
 -spec decode_address(binary()) ->
-    {ok, binary()} | {error, integer(), binary()}.
+    {ok, binary()} | {unknown, binary()} | {error, integer(), binary()}.
 decode_address(<<"ak_", _/binary>> = Encoded) ->
     case aeapi:decode_account_pubkey(Encoded) of
         {ok, Bin} -> {ok, Bin};
@@ -91,16 +102,24 @@ decode_address(<<"ct_", _/binary>> = Encoded) ->
         _Error    -> {error, -32602, <<"Invalid address">>}
     end;
 decode_address(<<"0x", _/binary>> = Hex) ->
-    try
-        Bin = aerpc_encoding:from_hex_data(Hex),
-        case byte_size(Bin) of
-            32 -> {ok, Bin};
-            _  -> {error, -32602, <<"Invalid address">>}
-        end
+    try aerpc_encoding:from_hex_data(Hex) of
+        <<Pubkey:32/binary>> ->
+            {ok, Pubkey};
+        <<Addr20:20/binary>> ->
+            resolve20(Addr20);
+        _Other ->
+            {error, -32602, <<"Invalid address">>}
     catch _:_ -> {error, -32602, <<"Invalid address">>}
     end;
 decode_address(_) ->
     {error, -32602, <<"Invalid address">>}.
+
+resolve20(Addr20) ->
+    case aerpc_addr_index:resolve(Addr20) of
+        {ok, Pubkey} -> {ok, Pubkey};
+        unknown      -> {unknown, Addr20};
+        incomplete   -> aerpc_errors:address_index_not_ready()
+    end.
 
 %% ===================================================================
 %% Internal
@@ -118,6 +137,8 @@ next_nonce(AddrIn) ->
                 {error, _Reason} ->
                     {ok, <<"0x0">>}
             end;
+        {unknown, _Addr20} ->
+            {ok, <<"0x0">>};
         {error, _, _} = Err ->
             Err
     end.
@@ -131,6 +152,12 @@ with_account(AddrIn, BlockId, OnAccount, DefaultIfMissing) ->
                 {error, _Reason}      -> {ok, DefaultIfMissing};
                 {error, _, _} = Err   -> Err   %% EIP-1898 -39001 etc.
             end;
+        {unknown, _Addr20} ->
+            %% Backfill is complete and no account derives this address,
+            %% so eth's "unknown address" default is the right answer.
+            %% While the backfill is still running decode_address/1
+            %% returns -32007 instead and never reaches here.
+            {ok, DefaultIfMissing};
         {error, _, _} = Err ->
             Err
     end.

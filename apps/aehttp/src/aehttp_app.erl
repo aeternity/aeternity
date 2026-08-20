@@ -166,8 +166,20 @@ start_http_api(Target, LogicHandler) ->
     %% `http > endpoints > rpc' in aeternity.yaml, resolved into
     %% `enabled_endpoint_groups' by check_env/0 above.
     Paths = case Target =:= external andalso rpc_enabled() of
-                true  -> aehttp_rpc_router:routes() ++ Paths0;
-                false -> Paths0
+                true  ->
+                    %% Bring up aerpc's address reverse index alongside
+                    %% the routes: it is what resolves the 20-byte
+                    %% addresses this endpoint speaks, and tying it to the
+                    %% switch keeps a node with the endpoint off free of
+                    %% both the startup backfill and the per-block work.
+                    case aerpc:enable() of
+                        ok -> ok;
+                        {error, Reason} ->
+                            lager:error("aerpc enable failed: ~p", [Reason])
+                    end,
+                    aehttp_rpc_router:routes() ++ Paths0;
+                false ->
+                    Paths0
             end,
     Dispatch = cowboy_router:compile([{'_', Paths}]),
     Opts = #{ num_acceptors => PoolSize

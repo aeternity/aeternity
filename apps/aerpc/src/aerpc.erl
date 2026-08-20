@@ -9,7 +9,15 @@
 %%%-------------------------------------------------------------------
 -module(aerpc).
 
--export([dispatch/1, max_batch_size/0]).
+-export([dispatch/1, max_batch_size/0, enable/0]).
+
+%% @doc Bring up the parts of this app that only an enabled endpoint
+%% needs. Called by `aehttp_app' when it mounts the routes, so the cost
+%% follows the operator switch rather than mere installation of the app.
+%% Idempotent.
+-spec enable() -> ok | {error, term()}.
+enable() ->
+    aerpc_sup:ensure_addr_index().
 
 -define(JSONRPC_VSN, <<"2.0">>).
 

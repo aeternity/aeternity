@@ -27,10 +27,6 @@
 
 -export([call/2, estimate_gas/2]).
 
-%% Mirrors apps/aehttp/src/aehttp_dispatch_ext.erl's DEFAULT_CALL_REQ_GAS_LIMIT;
-%% lifted here to keep aerpc free of aehttp dependencies.
--define(DEFAULT_CALL_GAS, 1000000).
-
 %% Fee field is required by aect_call_tx:new/1 but ignored by dry_run
 %% (dry_run skips fee accounting). Mirrors the value the existing
 %% REST dry-run endpoint uses for synthesized call txs.
@@ -39,7 +35,13 @@
 %% Same for gas_price: any non-zero value works; dry_run won't bill it.
 -define(DUMMY_GAS_PRICE, 1000000).
 
+%% Nonce used for the magic caller, which has never transacted.
 -define(DUMMY_NONCE, 1).
+
+%% dry_run's magic high-balance account: a 32-byte binary that
+%% `aec_dry_run:setup_dry_run/2' seeds with a huge balance. Mirrors
+%% aec_dry_run's ?MR_MAGIC.
+-define(MAGIC_CALLER, <<1:32/unit:8>>).
 
 %% ===================================================================
 %% Public API
@@ -97,9 +99,14 @@ do_dry_run(TxObj, BlockId) ->
                 with_top(BlockId, fun(Top) ->
                     Amount = aerpc_encoding:from_optional_quantity(
                                  maps:get(<<"value">>, TxObj, undefined), 0),
+                    %% Eth defaults an omitted `gas' to the block gas
+                    %% limit, and both viem and ethers omit it. Defaulting
+                    %% to a fixed 1,000,000 instead made every unadorned
+                    %% eth_call fail with "Out of gas" on any contract
+                    %% doing real work.
                     Gas    = aerpc_encoding:from_optional_quantity(
                                  maps:get(<<"gas">>,   TxObj, undefined),
-                                 ?DEFAULT_CALL_GAS),
+                                 default_gas()),
                     with_contract(ContractPK, fun(ABI) ->
                         build_and_run(Top, CallerPK, ContractPK, ABI,
                                       CallData, Amount, Gas)
@@ -116,6 +123,7 @@ with_decoded_to(TxObj, K) ->
         ToBin when is_binary(ToBin) ->
             case aerpc_account:decode_address(ToBin) of
                 {ok, ContractPK}    -> K(ContractPK);
+                {unknown, _Addr20}  -> {ok, no_contract};
                 {error, _, _} = Err -> Err
             end;
         _ -> {error, -32602, <<"Invalid 'to' field">>}
@@ -134,13 +142,14 @@ with_contract(ContractPK, K) ->
 with_caller(TxObj, K) ->
     case maps:get(<<"from">>, TxObj, undefined) of
         undefined ->
-            %% Use dry_run's magic high-balance account. Defined locally
-            %% as a 32-byte binary that dry_run/4 seeds with a huge
-            %% balance; mirrors aec_dry_run:?MR_MAGIC.
-            K(<<1:32/unit:8>>);
+            K(?MAGIC_CALLER);
         FromBin when is_binary(FromBin) ->
             case aerpc_account:decode_address(FromBin) of
                 {ok, CallerPK}       -> K(CallerPK);
+                %% An address nothing on chain derives has no nonce and
+                %% no balance; the magic caller is the closest honest
+                %% stand-in and is what an omitted `from' already gets.
+                {unknown, _Addr20}   -> K(?MAGIC_CALLER);
                 {error, _, _} = Err  -> Err
             end;
         _ -> {error, -32602, <<"Invalid 'from' field">>}
@@ -188,10 +197,32 @@ build_and_run(Top, CallerPK, ContractPK, ABI, CallData, Amount, Gas) ->
     {ok, Tx} = build_call_tx(CallerPK, ContractPK, ABI, CallData, Amount, Gas),
     run_and_extract(Top, Tx).
 
+%% Eth's block gas limit default for an omitted `gas'. Read live so a
+%% node whose governance value differs does not inherit a stale constant.
+default_gas() ->
+    try aec_governance:block_gas_limit() of
+        N when is_integer(N), N > 0 -> N;
+        _Other                      -> 1000000
+    catch _:_ -> 1000000
+    end.
+
+%% The dry-run tx has to carry a nonce the account has not used, or
+%% dry_run rejects it with tx_nonce_already_used_for_account -- which is
+%% every account that has ever transacted, and both clients attach
+%% `from' whenever an account is configured. The magic caller has never
+%% transacted, so it keeps the fixed nonce.
+caller_nonce(?MAGIC_CALLER) ->
+    ?DUMMY_NONCE;
+caller_nonce(CallerPK) ->
+    case aec_next_nonce:pick_for_account(CallerPK) of
+        {ok, Next}      -> Next;
+        {error, _Rsn}   -> ?DUMMY_NONCE
+    end.
+
 build_call_tx(CallerPK, ContractPK, ABI, CallData, Amount, Gas) ->
     aect_call_tx:new(#{
         caller_id   => aeser_id:create(account,  CallerPK),
-        nonce       => ?DUMMY_NONCE,
+        nonce       => caller_nonce(CallerPK),
         contract_id => aeser_id:create(contract, ContractPK),
         abi_version => ABI,
         fee         => ?DUMMY_FEE,

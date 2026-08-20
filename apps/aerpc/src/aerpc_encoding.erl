@@ -8,22 +8,37 @@
 %%% client parses no other form, so the AE-native `ak_...' / `ct_...' /
 %%% `kh_...' / `th_...' encodings do not appear in any response.
 %%%
-%%% Addresses are 32 bytes wide (`0x' + 64 hex), not eth's 20. AE
-%%% pubkeys are 32 bytes and truncating them is lossy; recovering a
-%%% 20-byte form would need a persistent reverse index over the account
-%%% state trie, which is an `aecore' architecture change rather than
-%%% maintenance work. The read path carries wide addresses fine --
-%%% viem does no length validation on `eth_getBalance' / `eth_getCode' /
-%%% `eth_getTransactionCount' params, nor inside `formatBlock' /
-%%% `formatTransaction'. What does NOT work is anything that parses an
-%%% address as an address: `getAddress/1', `isAddress/1', EIP-55
-%%% checksumming, and any Solidity-ABI `address' argument. That is a
-%%% documented divergence, not a bug to be worked around here.
+%%% == Addresses are 20 bytes ==
 %%%
-%%% Inputs stay permissive: `aerpc_account:decode_address/1' and
-%%% `aerpc_block:decode_block_hash/1' still accept the AE-native forms
-%%% alongside `0x' hex, so an AE-aware caller is not locked out. Only
-%%% the emitted side is eth-shaped.
+%%% Every address-typed field -- `from', `to', `miner',
+%%% `contractAddress', a log's `address' -- is exactly 20 bytes of
+%%% lower-case `0x' hex, derived as the first 20 bytes of the 32-byte AE
+%%% pubkey. `aerpc_addr_index' holds the reverse mapping so an inbound
+%%% 20-byte address resolves back to its pubkey.
+%%%
+%%% An earlier revision emitted the full 32-byte pubkey on the theory
+%%% that clients do not validate address width. Measured, they do:
+%%% ethers v6 scored 4/12 against it and could not read a plain block,
+%%% because its response formatter validates every address-typed field
+%%% (`block.miner' alone sinks `getBlock') and its request path reads a
+%%% non-20-byte string as an ENS name. viem's plain reads survived, but
+%%% `parseAccount' rejected the width, so `call' and `estimateGas' -- the
+%%% two methods this endpoint is default-off to protect -- were
+%%% unreachable.
+%%%
+%%% Lower-case is load-bearing, not cosmetic: `getAddress/1' accepts an
+%%% all-lower address and checksums it itself, but throws on mixed case
+%%% that fails EIP-55. Never emitting mixed case is why no checksumming
+%%% is implemented here.
+%%%
+%%% Hashes are unaffected and stay 32 bytes: block and transaction
+%%% hashes are not address-typed and no client narrows them.
+%%%
+%%% Inputs stay permissive: `aerpc_account:decode_address/1' takes
+%%% 20-byte, 32-byte, `ak_...' and `ct_...' alike, and
+%%% `aerpc_block:decode_block_hash/1' takes `kh_...' alongside `0x'
+%%% hex, so AE-native tooling is not locked out. Only the emitted side
+%%% narrows.
 %%% @end
 %%%-------------------------------------------------------------------
 -module(aerpc_encoding).
@@ -83,18 +98,18 @@ from_hex_data(<<"0x", Hex/binary>>) ->
 from_hex_data(Bin) when is_binary(Bin) ->
     binary:decode_hex(Bin).
 
-%% @doc Emit an AE account pubkey as a 32-byte DATA value. NOT
-%% `aeapi:format_account_pubkey/1' -- an `ak_...' string is unparseable
-%% to every eth client, which is the whole point of this layer.
+%% @doc Emit an AE account pubkey as a 20-byte eth address. Neither
+%% `aeapi:format_account_pubkey/1' (an `ak_...' string no eth client can
+%% parse) nor the full pubkey (which ethers rejects outright).
 -spec format_account(binary()) -> binary().
 format_account(Pubkey) ->
-    to_hex_data(Pubkey).
+    to_hex_data(aerpc_addr_index:to_addr20(Pubkey)).
 
 %% @doc Contract pubkeys share the account key space and the same wire
 %% form; kept as a separate function so callers still read as intended.
 -spec format_contract(binary()) -> binary().
 format_contract(Pubkey) ->
-    to_hex_data(Pubkey).
+    to_hex_data(aerpc_addr_index:to_addr20(Pubkey)).
 
 -spec format_key_block_hash(binary()) -> binary().
 format_key_block_hash(Hash) ->

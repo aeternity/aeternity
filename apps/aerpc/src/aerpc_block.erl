@@ -7,8 +7,18 @@
 %%% height; transactions are the flat-list of all micro-block txs.
 %%%
 %%% Hash and address-like fields go out as `0x' hex through
-%%% `aerpc_encoding' -- see that module for why addresses are 32 bytes
-%%% wide rather than eth's 20.
+%%% `aerpc_encoding': hashes 32 bytes, addresses 20. `miner' is an
+%%% address, and ethers validates it on every `getBlock', so its width
+%%% is not cosmetic here.
+%%%
+%%% No `baseFeePerGas'. æternity is a legacy-fee chain: every contract
+%%% tx pays a flat `gas_price' the sender chooses and there is no
+%%% EIP-1559 base fee to report. Synthesising one would make viem build
+%%% type-2 transactions this node cannot accept, and the surface is
+%%% read-only anyway. viem's `estimateFeesPerGas()' throwing "Chain does
+%%% not support EIP-1559 fees" is therefore correct behaviour, not a
+%%% defect; the supported paths are viem with `{type: 'legacy'}',
+%%% `getGasPrice()', and ethers' `getFeeData()', all of which work.
 %%% @end
 %%%-------------------------------------------------------------------
 -module(aerpc_block).
@@ -256,7 +266,12 @@ to_eth_shape(KeyBlock, MBs, Hash, FullTxs) ->
     TimestampMs = aec_headers:time_in_msecs(Header),
     Difficulty = aec_headers:difficulty(Header),
     Nonce = aec_headers:nonce(Header),
-    GasUsed = sum_gas_used(MBs),
+    %% Actual gas consumed, read from the same call objects the receipts
+    %% report, so `block.gasUsed' equals the sum of its own receipts.
+    %% Summing each tx's declared `gas' limit instead -- which is what
+    %% this did -- could never satisfy that equality, and it is a
+    %% cross-check indexers run routinely.
+    GasUsed = aerpc_tx:gas_used_in_generation(Hash),
     Txs = transactions_field(MBs, Height, Hash, FullTxs),
     %% Pull the raw `{Address, Topics, Data}' triples once, both the
     %% bloom and the (future) receipts root derive from these.
@@ -332,26 +347,6 @@ pad_left(Bin, Width, Pad) ->
         true ->
             Padding = binary:copy(<<Pad>>, Width - Size),
             <<Padding/binary, Bin/binary>>
-    end.
-
-sum_gas_used(MBs) ->
-    lists:sum([gas_used_for_micro_block(MB) || MB <- MBs]).
-
-gas_used_for_micro_block(MB) ->
-    Txs = aec_blocks:txs(MB),
-    lists:sum([signed_tx_gas(STx) || STx <- Txs]).
-
-%% Best-effort gas accounting: for tx types that carry an explicit gas
-%% field (contract calls/creates), include it; everything else is 0 from
-%% an EVM-style metering perspective.
-signed_tx_gas(SignedTx) ->
-    try
-        {Mod, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
-        case erlang:function_exported(Mod, gas, 1) of
-            true  -> Mod:gas(Tx);
-            false -> 0
-        end
-    catch _:_ -> 0
     end.
 
 %% `fullTransactions: true' emits eth transaction objects; `false' emits
