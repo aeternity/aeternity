@@ -8,7 +8,8 @@
 %%%
 %%% The code allocations:
 %%%   -32003  execution reverted              (contract call)
-%%%   -32004  operation not supported         (FATE / write methods)
+%%%   -32004  operation not supported         (FATE / write methods,
+%%%                                            unsupported subscription kind)
 %%%   -32005  range too wide                  (eth_getLogs)
 %%%   -32006  batch too large                 (transport-level)
 %%%   -32007  address index not ready         (20-byte address lookup)
@@ -32,7 +33,22 @@
          address_index_not_ready/0,
          filter_not_found/0,
          too_many_filters/1,
-         filter_registry_unavailable/0]).
+         filter_registry_unavailable/0,
+         unsupported_subscription/1]).
+
+%% @doc -32004. The subscription kind is well-formed and simply not
+%% implemented here. Distinct from -32602 on purpose: "invalid params"
+%% tells a client it called wrong, and it will retry or give up, where
+%% "unsupported kind" tells it to fall back to the equivalent poll
+%% filter -- which for every kind on this endpoint exists and works.
+%% Naming the supported set saves the client a guess.
+-spec unsupported_subscription(binary()) -> {error, integer(), binary()}.
+unsupported_subscription(Kind) ->
+    Msg = iolist_to_binary(
+            io_lib:format("Unsupported subscription kind '~s'. Supported: "
+                          "newHeads, logs, newPendingTransactions.",
+                          [Kind])),
+    {error, -32004, Msg}.
 
 %% @doc -32007. A 20-byte address could not be resolved AND the reverse
 %% index has not finished building, so we cannot tell "no such account"

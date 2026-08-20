@@ -206,6 +206,108 @@ no_subscribers_no_work() ->
     ?assertEqual(0, meck:num_calls(aerpc_block, by_hash, '_')).
 
 %% ===================================================================
+%% newPendingTransactions over the subscription path
+%% ===================================================================
+
+pending_subscription_test_() ->
+    {foreach,
+     fun setup_subs/0,
+     fun teardown_subs/1,
+     [fun(_) -> {"a mempool arrival is pushed as a tx hash",
+                 fun pending_sub_pushes_hash/0} end,
+      fun(_) -> {"with the full flag the payload is the eth tx object",
+                 fun pending_sub_full_tx/0} end,
+      fun(_) -> {"a newHeads subscriber is not sent pending transactions",
+                 fun pending_does_not_leak_to_other_kinds/0} end,
+      fun(_) -> {"unsubscribing stops the frames",
+                 fun pending_unsubscribe/0} end]}.
+
+pending_sub_pushes_hash() ->
+    {ok, SubId} = aerpc_subscriptions:subscribe(self(), pending_tx, false),
+    STx = spend_tx(7),
+    publish_pending(STx),
+    Expected = aerpc_encoding:format_tx_hash(aetx_sign:hash(STx)),
+    receive
+        {aerpc_notify, SubId, Payload} -> ?assertEqual(Expected, Payload)
+    after 2000 -> ?assert(false)
+    end.
+
+pending_sub_full_tx() ->
+    {ok, SubId} = aerpc_subscriptions:subscribe(self(), pending_tx, true),
+    STx = spend_tx(8),
+    publish_pending(STx),
+    receive
+        {aerpc_notify, SubId, Payload} ->
+            ?assert(is_map(Payload)),
+            ?assertEqual(aerpc_encoding:format_tx_hash(aetx_sign:hash(STx)),
+                         maps:get(<<"hash">>, Payload)),
+            %% Pending, so no block position -- same shape the HTTP
+            %% eth_getTransactionByHash returns for a mempool tx.
+            ?assertEqual(null, maps:get(<<"blockHash">>, Payload))
+    after 2000 -> ?assert(false)
+    end.
+
+pending_does_not_leak_to_other_kinds() ->
+    {ok, _HeadsId} = aerpc_subscriptions:subscribe(self(), newHeads, undefined),
+    publish_pending(spend_tx(9)),
+    receive
+        {aerpc_notify, _, _} -> ?assert(false)
+    after 300 -> ok
+    end.
+
+pending_unsubscribe() ->
+    {ok, SubId} = aerpc_subscriptions:subscribe(self(), pending_tx, false),
+    publish_pending(spend_tx(10)),
+    receive {aerpc_notify, SubId, _} -> ok after 2000 -> ?assert(false) end,
+    ?assert(aerpc_subscriptions:unsubscribe(self(), SubId)),
+    publish_pending(spend_tx(11)),
+    receive
+        {aerpc_notify, _, _} -> ?assert(false)
+    after 300 -> ok
+    end.
+
+%% ===================================================================
+%% Unsupported kind vs malformed params
+%% ===================================================================
+
+subscribe_params_test_() ->
+    [{"the three supported kinds parse",
+      fun() ->
+          ?assertEqual({ok, newHeads, undefined},
+                       aerpc_subscriptions:parse_subscribe_params(
+                         [<<"newHeads">>])),
+          ?assertEqual({ok, logs, #{}},
+                       aerpc_subscriptions:parse_subscribe_params(
+                         [<<"logs">>])),
+          ?assertEqual({ok, pending_tx, false},
+                       aerpc_subscriptions:parse_subscribe_params(
+                         [<<"newPendingTransactions">>])),
+          ?assertEqual({ok, pending_tx, true},
+                       aerpc_subscriptions:parse_subscribe_params(
+                         [<<"newPendingTransactions">>, true])),
+          %% Lab sent this exact form and got -32602.
+          ?assertEqual({ok, pending_tx, false},
+                       aerpc_subscriptions:parse_subscribe_params(
+                         [<<"newPendingTransactions">>, false]))
+      end},
+     {"an unsupported kind is distinguishable from a malformed call",
+      fun() ->
+          {error, KindCode, Msg} =
+              aerpc_subscriptions:parse_subscribe_params([<<"syncing">>]),
+          ?assertEqual(-32004, KindCode),
+          %% Naming the kind and the supported set is what lets a client
+          %% fall back to the poll filter instead of just failing.
+          ?assertNotEqual(nomatch, binary:match(Msg, <<"syncing">>)),
+          ?assertNotEqual(nomatch,
+                          binary:match(Msg, <<"newPendingTransactions">>)),
+          %% The distinction is the point: not the same code as a typo.
+          [?assertMatch({error, -32602, _},
+                        aerpc_subscriptions:parse_subscribe_params(P))
+           || P <- [[], [123], <<"newHeads">>, #{}]],
+          ?assertNotEqual(-32602, KindCode)
+      end}].
+
+%% ===================================================================
 %% Fixtures
 %% ===================================================================
 
@@ -291,6 +393,12 @@ spend_tx(Nonce) ->
 publish_tx(SignedTx) ->
     Pid = whereis(aerpc_filter_registry),
     Pid ! {gproc_ps_event, tx_received, #{info => SignedTx}},
+    ok.
+
+publish_pending(SignedTx) ->
+    Pid = whereis(aerpc_subscriptions),
+    Pid ! {gproc_ps_event, tx_received, #{info => SignedTx}},
+    _ = sys:get_state(Pid),
     ok.
 
 publish_top(Hash, Type) ->

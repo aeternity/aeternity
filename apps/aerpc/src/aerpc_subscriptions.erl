@@ -5,7 +5,7 @@
 %%% pids, and fans `aec_events' broadcasts (new key-blocks; new logs)
 %%% out to the right subscribers in the right shape.
 %%%
-%%% Two subscription kinds today:
+%%% Three subscription kinds:
 %%%
 %%%   * `newHeads' -- fires once per new generation; payload is the
 %%%     eth-shaped block (`eth_getBlockByNumber' result with full-tx
@@ -13,6 +13,18 @@
 %%%   * `logs'     -- fires once per matching log inside a new
 %%%     generation; payload is the same map shape as one element of
 %%%     `eth_getLogs'.
+%%%   * `newPendingTransactions' -- fires once per mempool arrival;
+%%%     payload is the tx hash, or the full eth transaction object when
+%%%     the client passed `true' as the second parameter. Same
+%%%     `aec_events:tx_received' stream `eth_newPendingTransactionFilter'
+%%%     polls, so the push and poll halves cannot disagree about what
+%%%     "pending" means.
+%%%
+%%% Unlike the two chain-derived kinds, a mempool arrival cannot be
+%%% recovered from chain state, so a client that misses a frame has
+%%% missed it. That is inherent to the eth semantics of this
+%%% subscription, not a property of this implementation -- geth behaves
+%%% the same way.
 %%%
 %%% Subscription IDs are hex `QUANTITY' (matches the eth wire
 %%% convention) and allocated from a monotonic counter. They are
@@ -26,7 +38,8 @@
 -export([start_link/0,
          subscribe/3,
          unsubscribe/2,
-         drop_owner/1]).
+         drop_owner/1,
+         parse_subscribe_params/1]).
 
 -export([init/1,
          handle_call/3,
@@ -38,10 +51,13 @@
 -record(sub, {
     id        :: binary(),
     owner     :: pid(),
-    kind      :: newHeads | logs,
-    criteria  :: undefined | map()  %% undefined for newHeads; the
+    kind      :: newHeads | logs | pending_tx,
+    criteria  :: undefined | map() | boolean()
+                                    %% undefined for newHeads; the
                                     %% caller-supplied filter map
-                                    %% (address/topics) for logs
+                                    %% (address/topics) for logs; the
+                                    %% full-transactions flag for
+                                    %% pending_tx
 }).
 
 -record(state, {
@@ -59,11 +75,46 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
--spec subscribe(pid(), newHeads | logs, term()) ->
+-spec subscribe(pid(), newHeads | logs | pending_tx, term()) ->
     {ok, binary()} | {error, integer(), binary()}.
 subscribe(OwnerPid, Kind, Criteria)
-  when is_pid(OwnerPid), (Kind =:= newHeads orelse Kind =:= logs) ->
+  when is_pid(OwnerPid), (Kind =:= newHeads orelse Kind =:= logs
+                          orelse Kind =:= pending_tx) ->
     gen_server:call(?MODULE, {subscribe, OwnerPid, Kind, Criteria}).
+
+%% @doc Turn `eth_subscribe' params into a kind and its criteria. Lives
+%% here rather than in the WebSocket handler because which kinds exist is
+%% a property of this registry, not of the transport -- the same reason
+%% the batch cap moved into `aerpc:dispatch/1'. It also makes the one
+%% distinction that matters testable without a socket.
+-spec parse_subscribe_params(term()) ->
+    {ok, newHeads | logs | pending_tx, term()} | {error, integer(), binary()}.
+parse_subscribe_params([<<"newHeads">>]) ->
+    {ok, newHeads, undefined};
+parse_subscribe_params([<<"newHeads">>, _Opts]) ->
+    %% eth ignores the second arg for newHeads in practice.
+    {ok, newHeads, undefined};
+parse_subscribe_params([<<"logs">>]) ->
+    {ok, logs, #{}};
+parse_subscribe_params([<<"logs">>, Criteria]) when is_map(Criteria) ->
+    {ok, logs, Criteria};
+parse_subscribe_params([<<"newPendingTransactions">>]) ->
+    {ok, pending_tx, false};
+parse_subscribe_params([<<"newPendingTransactions">>, Full])
+  when is_boolean(Full) ->
+    %% geth's second parameter: `true' asks for full transaction objects
+    %% rather than hashes.
+    {ok, pending_tx, Full};
+%% A kind we do not implement is NOT the same answer as a malformed
+%% call. A client told "invalid params" retries or gives up; one told the
+%% kind is unsupported falls back to polling, and for every kind on this
+%% endpoint the poll filter exists and works. Splitting them costs one
+%% clause and is the difference between a client that degrades and one
+%% that just fails.
+parse_subscribe_params([Kind | _Rest]) when is_binary(Kind) ->
+    aerpc_errors:unsupported_subscription(Kind);
+parse_subscribe_params(_Malformed) ->
+    {error, -32602, <<"Invalid params">>}.
 
 -spec unsubscribe(pid(), binary()) -> boolean().
 unsubscribe(OwnerPid, SubId) when is_pid(OwnerPid), is_binary(SubId) ->
@@ -86,6 +137,12 @@ init([]) ->
     %% the registry can boot even in test environments where aec_events
     %% isn't fully wired up.
     try aec_events:subscribe(top_changed)
+    catch _:_ -> ok
+    end,
+    %% The mempool stream, for `newPendingTransactions'. The handler
+    %% returns immediately when nothing is subscribed to it, so a socket
+    %% that only asked for newHeads costs nothing here.
+    try aec_events:subscribe(tx_received)
     catch _:_ -> ok
     end,
     {ok, #state{}}.
@@ -133,6 +190,11 @@ handle_info({gproc_ps_event, top_changed, #{info := Info}}, State)
     {noreply, State};
 handle_info({gproc_ps_event, top_changed, _Other}, State) ->
     %% Event shape changed across protocols; ignore rather than crash.
+    {noreply, State};
+handle_info({gproc_ps_event, tx_received, #{info := SignedTx}}, State) ->
+    fanout_pending(SignedTx, State),
+    {noreply, State};
+handle_info({gproc_ps_event, tx_received, _Other}, State) ->
     {noreply, State};
 handle_info({'DOWN', _MRef, process, Pid, _Reason}, State) ->
     State1 = drop_all_for(Pid, State),
@@ -221,6 +283,46 @@ prev_key(Hash) ->
         {ok, Header} -> {ok, aec_headers:prev_key_hash(Header)};
         error        -> error
     end.
+
+%% Mempool fan-out. Only `pending_tx' subscribers care, and hashing a
+%% transaction is not free, so the early return is on whether anyone is
+%% listening rather than inside the per-subscriber fold -- the same
+%% shape as `fanout/2' below.
+fanout_pending(SignedTx, #state{by_id = Subs}) ->
+    case pending_subs(Subs) of
+        [] ->
+            ok;
+        Pending ->
+            try aetx_sign:hash(SignedTx) of
+                TxHash ->
+                    Hash = aerpc_encoding:format_tx_hash(TxHash),
+                    %% The full-transaction form is built once and only
+                    %% if some subscriber asked for it.
+                    Full = pending_full_tx(Pending, SignedTx),
+                    [send(Owner, Id, pending_payload(Criteria, Hash, Full))
+                     || #sub{id = Id, owner = Owner, criteria = Criteria}
+                            <- Pending],
+                    ok
+            catch _:_ -> ok
+            end
+    end.
+
+pending_subs(Subs) ->
+    [S || #sub{kind = pending_tx} = S <- maps:values(Subs)].
+
+%% geth's second parameter: `true' means full transaction objects,
+%% anything else means hashes. Both halves of this endpoint agree on
+%% what a pending transaction is because both read the same event.
+pending_full_tx(Pending, SignedTx) ->
+    case lists:any(fun(#sub{criteria = true}) -> true;
+                      (_Other)                -> false
+                   end, Pending) of
+        true  -> aerpc_tx:to_eth_tx(SignedTx, null, null, null);
+        false -> undefined
+    end.
+
+pending_payload(true, _Hash, Full) when is_map(Full) -> Full;
+pending_payload(_Other, Hash, _Full)                 -> Hash.
 
 fanout(_KBHash, #state{by_id = Subs}) when map_size(Subs) =:= 0 ->
     %% No subscribers: do nothing at all. The payload build below fetches

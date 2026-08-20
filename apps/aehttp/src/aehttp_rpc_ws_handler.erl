@@ -8,6 +8,11 @@
 %%% async notifications back. All other methods delegate to
 %%% `aerpc:dispatch/1', exactly like the HTTP path.
 %%%
+%%% Supported kinds: `newHeads', `logs', `newPendingTransactions'. A
+%%% kind outside that set is reported as unsupported rather than as
+%%% invalid params, so a client can tell "this node will never do that"
+%%% from "you called it wrong" and fall back to the poll filter.
+%%%
 %%% Notification frames have eth's standard `eth_subscription' shape
 %%% (no `id', a `params: {subscription, result}' object).
 %%% @end
@@ -81,19 +86,11 @@ handle_request(Batch) when is_list(Batch) ->
 handle_request(#{<<"jsonrpc">> := ?JSONRPC_VSN,
                  <<"method">>  := <<"eth_subscribe">>} = Req) ->
     Id = maps:get(<<"id">>, Req, null),
-    case maps:get(<<"params">>, Req, []) of
-        [<<"newHeads">>] ->
-            do_subscribe(Id, newHeads, undefined);
-        [<<"newHeads">>, _Opts] ->
-            %% eth ignores the second arg for newHeads in practice;
-            %% accept and discard.
-            do_subscribe(Id, newHeads, undefined);
-        [<<"logs">>] ->
-            do_subscribe(Id, logs, #{});
-        [<<"logs">>, Crit] when is_map(Crit) ->
-            do_subscribe(Id, logs, Crit);
-        _Other ->
-            aerpc_jsonrpc:error(Id, -32602, <<"Invalid params">>)
+    %% Which kinds exist is the registry's business, not the transport's.
+    case aerpc_subscriptions:parse_subscribe_params(
+           maps:get(<<"params">>, Req, [])) of
+        {ok, Kind, Criteria} -> do_subscribe(Id, Kind, Criteria);
+        {error, Code, Msg}   -> aerpc_jsonrpc:error(Id, Code, Msg)
     end;
 handle_request(#{<<"jsonrpc">> := ?JSONRPC_VSN,
                  <<"method">>  := <<"eth_unsubscribe">>} = Req) ->
