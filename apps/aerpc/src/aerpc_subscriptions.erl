@@ -363,28 +363,33 @@ pending_payload(_Other, Hash, _Full)                 -> Hash.
 %% generation; `pending_tx' is driven by the mempool and has nothing to
 %% do here.
 %%
-%% Select those subscribers FIRST, and let the empty case fall out of the
-%% same selection. The previous version folded over every subscription
-%% with clauses for two kinds only, which made a `pending_tx' entry a
-%% function_clause that killed this gen_server -- taking every other
-%% subscription on the node with it, since the supervisor restarts it
-%% empty. It also guarded the expensive path on `map_size(Subs) =:= 0',
-%% so a socket subscribed only to pending transactions still paid for a
-%% whole generation walk and a bloom over its logs on every key block.
+%% Decide whether ANY generation subscriber exists first, and let the
+%% empty case fall out of that. The previous version folded over every
+%% subscription with clauses for two kinds only, which made a
+%% `pending_tx' entry a function_clause that killed this gen_server --
+%% taking every other subscription on the node with it, since the
+%% supervisor restarts it empty. It also guarded the expensive path on
+%% `map_size(Subs) =:= 0', so a socket subscribed only to pending
+%% transactions still paid for a whole generation walk and a bloom over
+%% its logs on every key block.
 %%
-%% Filtering by kind fixes both, and the catch-all clause below makes a
-%% fourth kind a no-op rather than a crash. That is the actual lesson
-%% here: adding a kind touched the producer and the record and left this
-%% consumer alone, and the fold's shape turned the omission into an
-%% outage instead of a gap.
+%% The predicate fixes both, and dispatch still walks the whole
+%% subscription list so the catch-all in `dispatch_generation/3' stays a
+%% clause that actually runs -- it is what drops a `pending_tx' entry
+%% here. Pre-filtering the list instead made that clause unreachable, and
+%% a defensive clause dialyzer can prove dead is not defending anything.
+%% That is the actual lesson here: adding a kind touched the producer and
+%% the record and left this consumer alone, and the fold's shape turned
+%% the omission into an outage instead of a gap.
 fanout(KBHash, State) ->
-    case generation_subs(State#state.by_id) of
-        [] ->
+    Subs = maps:values(State#state.by_id),
+    case lists:any(fun is_generation_sub/1, Subs) of
+        false ->
             %% Nobody is listening for generations. The payload build
             %% below fetches the whole generation and blooms every log in
             %% it, which is not work to do speculatively.
             ok;
-        Subs ->
+        true ->
             %% Built once, reused across all `newHeads' subscribers.
             BlockMap = block_for_notification(KBHash),
             HashEnc  = aerpc_encoding:format_key_block_hash(KBHash),
@@ -392,9 +397,9 @@ fanout(KBHash, State) ->
             ok
     end.
 
-generation_subs(ById) ->
-    [S || #sub{kind = Kind} = S <- maps:values(ById),
-          Kind =:= newHeads orelse Kind =:= logs].
+is_generation_sub(#sub{kind = newHeads}) -> true;
+is_generation_sub(#sub{kind = logs})     -> true;
+is_generation_sub(#sub{})                -> false.
 
 dispatch_generation(#sub{kind = newHeads, owner = Pid, id = Id},
                     BlockMap, _HashEnc) ->
@@ -402,10 +407,11 @@ dispatch_generation(#sub{kind = newHeads, owner = Pid, id = Id},
 dispatch_generation(#sub{kind = logs, owner = Pid, id = Id, criteria = Crit},
                     _BlockMap, HashEnc) ->
     fanout_logs(Pid, Id, HashEnc, Crit);
-dispatch_generation(_Sub, _BlockMap, _HashEnc) ->
-    %% Unreachable given generation_subs/1, and deliberately here anyway:
-    %% a kind added later must degrade to silence, never to a crash that
-    %% empties the whole registry.
+dispatch_generation(#sub{}, _BlockMap, _HashEnc) ->
+    %% Reached by every `pending_tx' subscription on every key block, and
+    %% by any kind added later: a generation is not their trigger, so
+    %% they degrade to silence rather than to a crash that empties the
+    %% whole registry.
     ok.
 
 block_for_notification(KBHash) ->

@@ -72,11 +72,14 @@ raw_logs_for_block(KeyBlockHash) when is_binary(KeyBlockHash) ->
 %% `logs_for_tx/2' return [] for every transaction, so every block's
 %% `logsBloom' came out empty however many logs the block really had.
 %% Same defect as the receipts, in the bloom builder.
+%%
+%% The hash is matched rather than defaulted: hash_internal_representation/1
+%% is spec'd `{ok, block_header_hash()}' and cannot fail, so the old
+%% `<<>>' fallback was a dead clause -- and had it ever been live it would
+%% have reproduced the very defect above, scoping every lookup at a hash
+%% that names no block and returning [] for a block full of logs.
 raw_logs_for_micro(MB) ->
-    MBHash = case aec_blocks:hash_internal_representation(MB) of
-                 {ok, H} -> H;
-                 _Other  -> <<>>
-             end,
+    {ok, MBHash} = aec_blocks:hash_internal_representation(MB),
     lists:append([logs_for_tx(STx, MBHash) || STx <- aec_blocks:txs(MB)]).
 
 %% ===================================================================

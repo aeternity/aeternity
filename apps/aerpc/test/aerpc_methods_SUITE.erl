@@ -842,15 +842,48 @@ method_eth_getLogs_range_too_wide(_Config) ->
                  aerpc:dispatch(Req)),
     ok.
 
+%% The filter family. `aerpc_filter_registry' backs all six of these
+%% methods, so each case asserts the two states this suite can reach
+%% without a chain and without meck:
+%%
+%%   * registry DOWN -- the node configuration where /v3/rpc is served
+%%     but the registry was never started. A configuration answer
+%%     (-32010), not a bad request.
+%%   * registry UP, no chain behind it -- which is what proves the
+%%     dispatcher routes INTO the registry instead of answering from a
+%%     table of its own. Every code below is one only the registry
+%%     produces.
+%%
+%% That second half is the part these cases previously lacked. They
+%% asserted a -32004 stub, `dispatch_method/2' was rewired onto the real
+%% registry, and nothing failed until the nightly ran the suite against
+%% the new code. Asserting a registry-only code is what makes the same
+%% rewiring visible here next time.
+%%
+%% The registry's behaviour WITH a chain -- cursors, the filter cap, the
+%% idle-TTL sweep, uninstall returning `true' for an id it holds -- is
+%% covered by `aerpc_p3_tests', which mecks `aec_chain'. This suite stays
+%% meck-free on purpose.
 method_eth_getFilterChanges(_Config) ->
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
             <<"method">>  => <<"eth_getFilterChanges">>,
             <<"params">>  => [<<"0x1">>]},
     ?assertMatch(#{<<"id">> := 1,
-                   <<"error">> := #{<<"code">> := -32004}},
+                   <<"error">> := #{<<"code">> := -32010}},
                  aerpc:dispatch(Req)),
-    ok.
+    {ok, _Pid} = registry_start(),
+    try
+        %% An id the registry does not hold is geth's `filter not found',
+        %% which clients read as "re-create it".
+        ?assertMatch(#{<<"id">> := 1,
+                       <<"error">> :=
+                           #{<<"code">>    := -32000,
+                             <<"message">> := <<"filter not found">>}},
+                     aerpc:dispatch(Req)),
+        ok
+    after registry_stop()
+    end.
 
 method_eth_getFilterLogs(_Config) ->
     Req = #{<<"jsonrpc">> => <<"2.0">>,
@@ -858,40 +891,94 @@ method_eth_getFilterLogs(_Config) ->
             <<"method">>  => <<"eth_getFilterLogs">>,
             <<"params">>  => [<<"0x1">>]},
     ?assertMatch(#{<<"id">> := 1,
-                   <<"error">> := #{<<"code">> := -32004}},
+                   <<"error">> := #{<<"code">> := -32010}},
                  aerpc:dispatch(Req)),
-    ok.
+    {ok, _Pid} = registry_start(),
+    try
+        ?assertMatch(#{<<"id">> := 1,
+                       <<"error">> :=
+                           #{<<"code">>    := -32000,
+                             <<"message">> := <<"filter not found">>}},
+                     aerpc:dispatch(Req)),
+        ok
+    after registry_stop()
+    end.
 
 method_eth_newBlockFilter(_Config) ->
-    %% v1.5-deferred: filter registry not yet implemented.
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
             <<"method">>  => <<"eth_newBlockFilter">>},
     ?assertMatch(#{<<"id">> := 1,
-                   <<"error">> := #{<<"code">> := -32004}},
+                   <<"error">> := #{<<"code">> := -32010}},
                  aerpc:dispatch(Req)),
-    ok.
+    {ok, _Pid} = registry_start(),
+    try
+        %% Allocation seeds the cursor from the top height, so with no
+        %% chain it stops at -32603 rather than handing back an id whose
+        %% cursor means nothing.
+        ?assertMatch(#{<<"id">> := 1,
+                       <<"error">> :=
+                           #{<<"code">>    := -32603,
+                             <<"message">> := <<"Chain not initialized">>}},
+                     aerpc:dispatch(Req)),
+        ok
+    after registry_stop()
+    end.
 
 method_eth_newFilter(_Config) ->
-    %% v1.5-deferred: filter registry not yet implemented.
+    %% `earliest' on both bounds so the range resolves without a chain and
+    %% the request reaches the registry's own allocation path; the
+    %% `latest' default would stop in resolve_bounds/1 at a generic
+    %% -32602 and prove nothing about where the request went.
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
             <<"method">>  => <<"eth_newFilter">>,
-            <<"params">>  => [#{<<"address">> => <<"ct_xxx">>}]},
+            <<"params">>  => [#{<<"fromBlock">> => <<"earliest">>,
+                                <<"toBlock">>   => <<"earliest">>}]},
     ?assertMatch(#{<<"id">> := 1,
-                   <<"error">> := #{<<"code">> := -32004}},
+                   <<"error">> := #{<<"code">> := -32010}},
                  aerpc:dispatch(Req)),
-    ok.
+    {ok, _Pid} = registry_start(),
+    try
+        ?assertMatch(#{<<"id">> := 1,
+                       <<"error">> :=
+                           #{<<"code">>    := -32603,
+                             <<"message">> := <<"Chain not initialized">>}},
+                     aerpc:dispatch(Req)),
+        %% `blockHash' is refused before any chain access and the message
+        %% is the registry's own, so this half pins the routing with no
+        %% dependence on chain state at all.
+        BlockHashReq =
+            Req#{<<"params">> => [#{<<"blockHash">> => <<"kh_xxx">>}]},
+        ?assertMatch(
+           #{<<"id">> := 1,
+             <<"error">> :=
+                 #{<<"code">>    := -32602,
+                   <<"message">> :=
+                       <<"blockHash is not valid for eth_newFilter; "
+                         "use eth_getLogs">>}},
+           aerpc:dispatch(BlockHashReq)),
+        ok
+    after registry_stop()
+    end.
 
 method_eth_newPendingTransactionFilter(_Config) ->
-    %% v1.5-deferred: filter registry not yet implemented.
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
             <<"method">>  => <<"eth_newPendingTransactionFilter">>},
     ?assertMatch(#{<<"id">> := 1,
-                   <<"error">> := #{<<"code">> := -32004}},
+                   <<"error">> := #{<<"code">> := -32010}},
                  aerpc:dispatch(Req)),
-    ok.
+    {ok, _Pid} = registry_start(),
+    try
+        ?assertMatch(#{<<"id">> := 1,
+                       <<"error">> :=
+                           #{<<"code">>    := -32603,
+                             <<"message">> := <<"Chain not initialized">>}},
+                     aerpc:dispatch(Req)),
+        ok
+    after registry_stop()
+    end.
 
 method_eth_sendRawTransaction(_Config) ->
     %% v1: write-path methods are explicitly out-of-scope and return
@@ -950,15 +1037,26 @@ method_eth_signTransaction(_Config) ->
     ok.
 
 method_eth_uninstallFilter(_Config) ->
-    %% v1.5-deferred: filter registry not yet implemented.
+    %% The one method in the family that is not an error in either state.
+    %% Uninstall is idempotent by eth convention: an id nobody holds is
+    %% `false', not an error -- and that is the answer whether the
+    %% registry is running or not, so both halves assert the same result
+    %% deliberately rather than by omission. The `true' half needs a real
+    %% filter to remove, which needs a chain, and lives in
+    %% `aerpc_p3_tests:block_filter_lifecycle/0'.
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
             <<"method">>  => <<"eth_uninstallFilter">>,
             <<"params">>  => [<<"0x1">>]},
-    ?assertMatch(#{<<"id">> := 1,
-                   <<"error">> := #{<<"code">> := -32004}},
+    ?assertMatch(#{<<"id">> := 1, <<"result">> := false},
                  aerpc:dispatch(Req)),
-    ok.
+    {ok, _Pid} = registry_start(),
+    try
+        ?assertMatch(#{<<"id">> := 1, <<"result">> := false},
+                     aerpc:dispatch(Req)),
+        ok
+    after registry_stop()
+    end.
 
 %% Over plain HTTP the subscribe methods return -32004 with a hint
 %% pointing at /v3/rpc/ws (real subs need a WS conn so the registry can
@@ -1069,6 +1167,25 @@ subs_start() ->
 
 subs_stop() ->
     case whereis(aerpc_subscriptions) of
+        undefined -> ok;
+        Pid ->
+            unlink(Pid),
+            exit(Pid, shutdown),
+            wait_for_exit(Pid, 1000)
+    end.
+
+%% Same shape as subs_start/subs_stop. Every filter case stops the
+%% registry in an `after', because the case that runs next asserts the
+%% registry-down answer and a leaked process would make it assert the
+%% wrong one.
+registry_start() ->
+    case whereis(aerpc_filter_registry) of
+        undefined -> aerpc_filter_registry:start_link();
+        Pid       -> {ok, Pid}
+    end.
+
+registry_stop() ->
+    case whereis(aerpc_filter_registry) of
         undefined -> ok;
         Pid ->
             unlink(Pid),

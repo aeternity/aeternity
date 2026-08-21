@@ -376,10 +376,12 @@ original_criteria(_) ->
 key_block_hash(Height) ->
     case aec_chain:get_key_block_by_height(Height) of
         {ok, KB} ->
-            case aec_blocks:hash_internal_representation(KB) of
-                {ok, Hash} -> aerpc_encoding:format_key_block_hash(Hash);
-                _Other     -> undefined
-            end;
+            %% Total: hash_internal_representation/1 is spec'd
+            %% `{ok, block_header_hash()}' and cannot fail for a block we
+            %% just read out of the chain. Matching says so; the old
+            %% catch-all was dead and dialyzer flagged it as such.
+            {ok, Hash} = aec_blocks:hash_internal_representation(KB),
+            aerpc_encoding:format_key_block_hash(Hash);
         {error, _Reason} ->
             undefined
     end.

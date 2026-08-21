@@ -221,11 +221,13 @@ generation_txs(KBHash) ->
             error
     end.
 
+%% Matched rather than defaulted: hash_internal_representation/1 is spec'd
+%% `{ok, block_header_hash()}' and cannot fail, so the old `<<>>' fallback
+%% was a dead clause -- and a live one would have carried a hash naming no
+%% block into every call lookup below, i.e. the same defect this function's
+%% doc describes.
 micro_block_txs(MB) ->
-    MBHash = case aec_blocks:hash_internal_representation(MB) of
-                 {ok, H} -> H;
-                 _Other  -> <<>>
-             end,
+    {ok, MBHash} = aec_blocks:hash_internal_representation(MB),
     [{STx, MBHash} || STx <- aec_blocks:txs(MB)].
 
 %% @doc Walk the generation's tx list to find the requested tx,
