@@ -186,9 +186,7 @@ min_relay_gas_price() ->
         _ -> undefined
     end.
 
-%% Off unless an operator asks for it: 0 reports the utilization the chain
-%% actually showed. Reporting a different figure is its own decision and does not
-%% follow from setting the price floor.
+%% Utilization bottom cap reported alongside a raised price, off (0) by default.
 -spec reporting_utilization_override() -> 0..100.
 reporting_utilization_override() ->
     case aeu_env:user_config_or_env([<<"http">>, <<"gas_price">>,
@@ -208,19 +206,13 @@ apply_min_relay_gas_price(GasPrice) ->
         Floor     -> max(GasPrice, Floor)
     end.
 
-%% The pair for one window of GET /v[23]/recent-gas-prices. The configured
-%% utilization is reported only where the floor actually raised the price, and a
-%% 0 price is min_gas_price/1's no-observation marker rather than a cheap
-%% window, so it passes through in both fields.
+%% The pair for one window of GET /v[23]/recent-gas-prices. Configured, price
+%% is reported as an outright override; utilization is a bottom cap.
 -spec apply_min_relay_gas_price(non_neg_integer(), 0..100) ->
           {non_neg_integer(), 0..100}.
-apply_min_relay_gas_price(0, Utilization) ->
-    {0, Utilization};
 apply_min_relay_gas_price(GasPrice, Utilization) ->
     case min_relay_gas_price() of
         undefined ->
-            {GasPrice, Utilization};
-        Floor when GasPrice >= Floor ->
             {GasPrice, Utilization};
         Floor ->
             {Floor, max(Utilization, reporting_utilization_override())}
