@@ -2039,6 +2039,12 @@ get_recent_gas_prices_min_relay(_Config) ->
     %% (a) off - today's behaviour, unchanged. The bucket count is asserted
     %%     because every assertion below is a list comprehension over it: against
     %%     an empty response they would all hold vacuously.
+    %%     Every bucket reporting `Observed' is also what says none of them is a
+    %%     no-observation window - those report 0 (aehttp_logic:min_gas_price/1).
+    %%     So this case answers for observed windows only, and the floor's
+    %%     behaviour on a no-observation window is pinned by eunit, in
+    %%     aehttp_logic_tests:empty_window_is_floored_test_/0. It is also why
+    %%     (c), (c2) and (d) below can expect `Observed' in every bucket.
     Base = recent_gas_prices(Host),
     ?assertEqual(4, length(Base)),
     ?assertEqual([Observed || _ <- Base], [ GP || {GP, _U} <- Base ]),

@@ -149,26 +149,47 @@ utilization_raised_when_the_floor_moves_test_() ->
       ]).
 
 %% THE NO-DATA CASE. A 0 price is min_gas_price/1's no-observation marker - no
-%% micro block fell inside the window - rather than a window that was cheap.
-empty_window_is_left_alone_test_() ->
+%% micro block fell inside the window. It is still a window sitting below the
+%% floor, and it is raised like any other: a quiet chain is precisely when an
+%% operator who configured a floor needs it advertised. An enabled floor is at
+%% least 1 aetto, so a no-observation window is always below it.
+empty_window_is_floored_test_() ->
     with_gas_price_env(
-      [ {"an empty window is untouched in BOTH fields - no floor applied, no "
-         "utilization substituted",
+      [ {"with the feature off an empty window passes through untouched in "
+         "BOTH fields - off has to stay byte-identical on the wire",
          fun() ->
-             set_min_relay(500000000000, 71),
+             set_min_relay(undefined),
              ?assertEqual({0, 0}, ?TEST_MODULE:apply_min_relay_gas_price(0, 0))
          end}
-      , {"the same holds at a floor matching the observed price, where only the "
-         "utilization would have been substituted",
-         fun() ->
-             set_min_relay(1000000000, 71),
-             ?assertEqual({0, 0}, ?TEST_MODULE:apply_min_relay_gas_price(0, 0))
-         end}
-      , {"an empty window keeps whatever utilization it arrived with, rather "
-         "than the test assuming that is always 0",
+      , {"configured, an empty window reports the floor and the configured "
+         "utilization alongside it",
          fun() ->
              set_min_relay(500000000000, 71),
-             ?assertEqual({0, 12}, ?TEST_MODULE:apply_min_relay_gas_price(0, 12))
+             ?assertEqual({500000000000, 71},
+                          ?TEST_MODULE:apply_min_relay_gas_price(0, 0))
+         end}
+      , {"the price floor ALONE reports the utilization the window arrived "
+         "with - flooring an empty window is not an opt-in to the override",
+         fun() ->
+             set_min_relay(500000000000),
+             ?assertEqual(0, ?TEST_MODULE:reporting_utilization_override()),
+             ?assertEqual({500000000000, 0},
+                          ?TEST_MODULE:apply_min_relay_gas_price(0, 0))
+         end}
+      , {"1 aetto is the smallest floor an operator can enable, and even that "
+         "is above a no-observation 0",
+         fun() ->
+             set_min_relay(1, 71),
+             ?assertEqual({1, 71}, ?TEST_MODULE:apply_min_relay_gas_price(0, 0))
+         end}
+      , {"an empty window keeps whatever utilization it arrived with where "
+         "that already exceeds the override - the override may only raise it. "
+         "The endpoint only ever pairs a 0 price with 0 (stats_to_data/2), so "
+         "this pins the contract rather than a reachable response",
+         fun() ->
+             set_min_relay(500000000000, 71),
+             ?assertEqual({500000000000, 85},
+                          ?TEST_MODULE:apply_min_relay_gas_price(0, 85))
          end}
       , {"no data is not a low price: ONE aetto really seen on chain is an "
          "observation, and is still floored",
@@ -176,12 +197,6 @@ empty_window_is_left_alone_test_() ->
              set_min_relay(500000000000, 71),
              ?assertEqual({500000000000, 71},
                           ?TEST_MODULE:apply_min_relay_gas_price(1, 0))
-         end}
-      , {"with the feature off an empty window is unchanged too - the guard "
-         "adds no behaviour of its own",
-         fun() ->
-             set_min_relay(undefined),
-             ?assertEqual({0, 0}, ?TEST_MODULE:apply_min_relay_gas_price(0, 0))
          end}
       ]).
 

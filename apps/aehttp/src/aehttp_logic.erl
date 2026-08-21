@@ -209,13 +209,14 @@ apply_min_relay_gas_price(GasPrice) ->
     end.
 
 %% The pair for one window of GET /v[23]/recent-gas-prices. The configured
-%% utilization is reported only where the floor actually raised the price, and a
-%% 0 price is min_gas_price/1's no-observation marker rather than a cheap
-%% window, so it passes through in both fields.
+%% utilization is reported only where the floor actually raised the price. A 0
+%% price is min_gas_price/1's no-observation marker - no micro block fell inside
+%% the window - and it is raised like any other window sitting below the floor:
+%% a quiet chain is exactly when an operator who set a floor needs it
+%% advertised, and a client reading a 0 there falls back to its own built-in
+%% price rather than to this node's.
 -spec apply_min_relay_gas_price(non_neg_integer(), 0..100) ->
           {non_neg_integer(), 0..100}.
-apply_min_relay_gas_price(0, Utilization) ->
-    {0, Utilization};
 apply_min_relay_gas_price(GasPrice, Utilization) ->
     case min_relay_gas_price() of
         undefined ->
