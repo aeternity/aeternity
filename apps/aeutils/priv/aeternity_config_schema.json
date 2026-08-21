@@ -1778,7 +1778,7 @@
                             "required": ["type"],
                             "properties": {
                                 "type": {
-                                    "description": "The type of the consensus algorithm used at the given height (ex. pow_cuckoo, smart_contract or hyperchain)",
+                                    "description": "The type of the consensus algorithm used at the given height (ex. pow_cuckoo or hyperchain)",
                                     "type": "string",
                                     "default": "hyperchain"
                                 },

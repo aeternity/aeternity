@@ -3142,6 +3142,8 @@ definitions:
         $ref: '#/definitions/EncodedPubkey'
       beneficiary:
         $ref: '#/definitions/EncodedPubkey'
+      flags:
+        $ref: '#/definitions/EncodedByteArray'
       target:
         $ref: '#/definitions/UInt32'
       pow:
@@ -3197,6 +3199,8 @@ definitions:
         $ref: '#/definitions/UInt64'
       version:
         $ref: '#/definitions/UInt32'
+      flags:
+        $ref: '#/definitions/EncodedByteArray'
     required:
       - hash
       - height

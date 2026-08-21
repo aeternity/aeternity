@@ -997,7 +997,7 @@ Configuration parameters for the selected consensus algorithm (Hyperchain).
 
 |Name|Type|Description|Required|
 |----|----|-----------|--------|
-|**type**|`string`|The type of the consensus algorithm used at the given height (ex. pow_cuckoo, smart_contract
+|**type**|`string`|The type of the consensus algorithm used at the given height (ex. pow_cuckoo
 or hyperchain)<br/>Default: `"hyperchain"`<br/>|yes|
 |[**config**](#chainconsensus1-90-9config)|`object`|Configuration for the given consensus algorithm<br/>|no|
 
