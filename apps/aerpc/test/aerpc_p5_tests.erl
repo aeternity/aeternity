@@ -53,12 +53,19 @@ delta_test_() ->
       {"transaction-field coverage still works, and a missing state is "
        "counted rather than silent",
        fun tx_fields_survive_a_delta_miss/0},
-      {"a delta too large to run re-walks instead of answering partially",
-       fun oversized_delta_re_walks/0},
-      {"an oversized contracts-trie delta re-walks too, rather than "
-       "crashing the index",
-       fun oversized_contract_delta_re_walks/0},
-      {"the re-walk keeps what is already known",
+      {"a delta too large for one slice is suspended and resumed, not "
+       "thrown away for a re-walk",
+       fun large_delta_yields_instead_of_re_walking/0},
+      {"a large contracts-trie delta yields too, rather than crashing "
+       "the index or re-walking",
+       fun large_contract_delta_yields_too/0},
+      {"a suspended delta never answers a miss with eth's zero",
+       fun catching_up_delta_never_answers_unknown/0},
+      {"tops arriving during a suspended delta fold into one catch-up "
+       "walk",
+       fun burst_coalesces_into_one_catch_up_walk/0},
+      {"a delta that fails half-way re-walks, and the re-walk keeps what "
+       "is already known",
        fun re_walk_keeps_known_entries/0},
       {"the backfill reads the contracts trie rather than materialising "
        "it, and a store does not become entries of its own",
@@ -176,32 +183,35 @@ tx_fields_survive_a_delta_miss() ->
     %% And the process is still alive to serve the next block.
     ?assertEqual(complete, maps:get(backfill, status())).
 
-%% The safety valve. A delta bigger than the ceiling is never applied
-%% half-way: the work goes to the chunked backfill, which is the only
-%% path in this module that yields.
-oversized_delta_re_walks() ->
+%% The burst case, and the reason the ceiling is gone. Mainnet produced a
+%% generation creating 15,508 pubkeys -- 149,025 trie nodes -- with ten
+%% more over the old 50,000-node cap inside one sampled window, clustered
+%% tighter than the 12m26s re-walk each one triggered. A delta larger
+%% than a slice is now suspended and resumed rather than abandoned, so
+%% the work is done once, by the walk that was already doing it.
+large_delta_yields_instead_of_re_walking() ->
     Patron = pk(60),
     Fresh  = [pk(N) || N <- lists:seq(61, 70)],
     put_state(?H_OLD, trees([Patron], [])),
     put_state(?H_NEW, trees([Patron | Fresh], [])),
-    %% The new top is where the re-walk reads from.
+    %% Where a re-walk would read from, if one were triggered.
     put_top(?H_NEW),
-    application:set_env(aerpc, addr_delta_max_nodes, 1),
+    application:set_env(aerpc, addr_delta_slice_nodes, 1),
 
     micro_event(?H_NEW, ?H_OLD),
-
-    ?assertEqual(1, maps:get(resyncs, status())),
     wait_for_backfill(complete, 100),
-    %% Every pubkey resolves once the re-walk lands -- no partial answer
-    %% was ever served as a complete one.
+
+    ?assertEqual(1, maps:get(delta_yields, status())),
+    %% The old code answered exactly this with a full re-walk of both
+    %% tries -- slower than the walk it was replacing.
+    ?assertEqual(0, maps:get(resyncs, status())),
     [?assertEqual({ok, PK}, resolve(PK)) || PK <- [Patron | Fresh]].
 
-%% The same valve, reached through the second trie. Worth its own case
-%% because the accounts trie is diffed first: any test whose accounts
-%% also changed overflows there and never exercises this return path at
-%% all. Here the accounts roots are identical, so only the contracts
-%% diff can overflow -- and the index has to survive it.
-oversized_contract_delta_re_walks() ->
+%% The same path, reached through the second trie. Worth its own case
+%% because the accounts trie is walked first: any test whose accounts
+%% also changed suspends there and never exercises this one. Here the
+%% accounts roots are identical, so only the contracts walk can yield.
+large_contract_delta_yields_too() ->
     Owner = pk(90),
     Cs    = [contract(Owner, N, <<"code">>) || N <- lists:seq(1, 6)],
     CtTree = lists:foldl(fun aect_state_tree:insert_contract/2,
@@ -209,42 +219,141 @@ oversized_contract_delta_re_walks() ->
     put_state(?H_OLD, trees([Owner], [])),
     put_state(?H_NEW, trees_with_contracts([Owner], CtTree)),
     put_top(?H_NEW),
-    application:set_env(aerpc, addr_delta_max_nodes, 1),
+    application:set_env(aerpc, addr_delta_slice_nodes, 1),
     Pid = whereis(aerpc_addr_index),
 
     micro_event(?H_NEW, ?H_OLD),
-
-    %% Survived: an overflow in the second trie is a re-walk, not a crash.
-    ?assertEqual(Pid, whereis(aerpc_addr_index)),
-    ?assertEqual(1, maps:get(resyncs, status())),
     wait_for_backfill(complete, 100),
+
+    ?assertEqual(Pid, whereis(aerpc_addr_index)),
+    ?assertEqual(1, maps:get(delta_yields, status())),
+    ?assertEqual(0, maps:get(resyncs, status())),
     [?assertEqual({ok, aect_contracts:pubkey(C)},
                   resolve(aect_contracts:pubkey(C))) || C <- Cs].
 
-%% A re-walk is not a `rebuild/0': dropping the table would make every
-%% address already served answer `incomplete' for the whole walk.
+%% Suspending a walk creates the one window this module exists to
+%% prevent: entries the walk has not reached yet are missing from a table
+%% that still says `complete'. Answering such a miss with `unknown' hands
+%% the caller eth's zero-and-empty default for an address that is live on
+%% chain -- the original P5 defect, reintroduced by the fix for the
+%% ceiling. So a suspended delta drops the index to `catching_up' and a
+%% miss reads `incomplete' until the walk lands.
+%%
+%% Observed under a gate rather than raced against: the walk is held open
+%% inside the index process, so `resolve/1' and `status/0' -- both of
+%% which read ETS directly -- report a genuinely mid-flight delta.
+catching_up_delta_never_answers_unknown() ->
+    Test   = self(),
+    Patron = pk(110),
+    Fresh  = [pk(N) || N <- lists:seq(111, 119)],
+    put_state(?H_OLD, trees([Patron], [])),
+    put_state(?H_NEW, trees([Patron | Fresh], [])),
+    put_top(?H_NEW),
+    application:set_env(aerpc, addr_delta_slice_nodes, 1),
+    ok = meck:new(aeu_mp_trees, [passthrough, no_link]),
+    %% Let one comparison through -- by which point the one-node slice has
+    %% been spent and the delta suspended -- then hold the next one.
+    ok = meck:expect(aeu_mp_trees, has_node,
+                     fun(P, N, T) ->
+                         case get(delta_gate) of
+                             undefined -> put(delta_gate, armed);
+                             armed     -> put(delta_gate, fired),
+                                          Test ! {gate, self()},
+                                          receive release -> ok end;
+                             fired     -> ok
+                         end,
+                         meck:passthrough([P, N, T])
+                     end),
+    try
+        micro_event(?H_NEW, ?H_OLD),
+        Index = receive {gate, Pid} -> Pid
+                after 5000 -> ?assert(false)
+                end,
+
+        ?assertEqual(catching_up, maps:get(backfill, status())),
+        ?assertEqual(1, maps:get(delta_yields, status())),
+        %% The entry already served still answers; nothing the walk has
+        %% not reached is passed off as absent.
+        ?assertEqual([], [A || A <- [resolve(PK) || PK <- Fresh],
+                               A =:= unknown]),
+        ?assertEqual(incomplete, resolve(lists:last(Fresh))),
+
+        Index ! release,
+        wait_for_backfill(complete, 100),
+        [?assertEqual({ok, PK}, resolve(PK)) || PK <- [Patron | Fresh]]
+    after
+        meck:unload(aeu_mp_trees)
+    end.
+
+%% A burst does not queue one walk per block. Trie entries are only ever
+%% added or updated, so ONE diff from the suspended walk's own target to
+%% the newest top is the union of every change in between -- which is why
+%% a catch-up costs one walk rather than one per generation.
+%%
+%% Both events are posted before either is handled, so the second lands
+%% while the first is genuinely suspended. That is the case under test,
+%% and posting them one at a time would not reach it.
+burst_coalesces_into_one_catch_up_walk() ->
+    Patron = pk(120),
+    Mid    = [pk(N) || N <- lists:seq(121, 130)],
+    Late   = pk(131),
+    put_state(?H_OLD, trees([Patron], [])),
+    put_state(?H_NEW, trees([Patron | Mid], [])),
+    put_state(?H_KEY, trees([Patron, Late | Mid], [])),
+    put_top(?H_KEY),
+    application:set_env(aerpc, addr_delta_slice_nodes, 1),
+
+    post_event(?H_NEW, ?H_OLD),
+    post_event(?H_KEY, ?H_NEW),
+    sync(),
+    wait_for_backfill(complete, 200),
+
+    ?assert(maps:get(delta_yields, status()) >= 1),
+    ?assertEqual(0, maps:get(resyncs, status())),
+    %% `Late' only exists in the second state, which no walk read
+    %% directly: it can only be here through the coalesced catch-up.
+    [?assertEqual({ok, PK}, resolve(PK)) || PK <- [Patron, Late | Mid]].
+
+%% A delta that stops half-way has already inserted part of what it
+%% found, so it is neither replayable nor a miss: it goes to the re-walk.
+%% And a re-walk is not a `rebuild/0' -- dropping the table would make
+%% every address already served answer `incomplete' for its duration.
 re_walk_keeps_known_entries() ->
     Known  = pk(80),
     Patron = pk(81),
+    Walked = pk(82),
     ok = aerpc_addr_index:index_pubkey(Known),
     put_state(?H_OLD, trees([Patron], [])),
-    put_state(?H_NEW, trees([Patron, pk(82)], [])),
+    put_state(?H_NEW, trees([Patron, Walked], [])),
     put_top(?H_NEW),
-    application:set_env(aerpc, addr_delta_max_nodes, 1),
+    ok = meck:new(aeu_mp_trees, [passthrough, no_link]),
+    ok = meck:expect(aeu_mp_trees, has_node,
+                     fun(_P, _N, _T) -> error(deliberate_delta_failure) end),
+    try
+        micro_event(?H_NEW, ?H_OLD),
 
-    micro_event(?H_NEW, ?H_OLD),
-
-    %% The re-walk really is under way -- otherwise the assertions below
-    %% would hold for a run that simply never touched the table.
-    ?assertEqual(1, maps:get(resyncs, status())),
-    ?assertEqual(running, maps:get(backfill, status())),
-    %% Mid-walk, before it can possibly have reached anything: the entry
-    %% that was already there still answers.
-    ?assertEqual({ok, Known}, resolve(Known)),
-    wait_for_backfill(complete, 100),
-    %% `Known' is in no trie the walk reads, so it can only still be here
-    %% because the re-walk added to the table rather than replacing it.
-    ?assertEqual({ok, Known}, resolve(Known)).
+        %% The failed delta went to the re-walk rather than being written
+        %% off as a miss.
+        ?assertEqual(1, maps:get(resyncs, status())),
+        %% Straight away, before the walk can have reached anything: the
+        %% entry that was already there still answers.
+        ?assertEqual({ok, Known}, resolve(Known)),
+        wait_for_backfill(complete, 100),
+        %% The re-walk really did read the tries -- `Walked' exists only
+        %% in the new state and the delta that would have indexed it
+        %% failed. (The backfill calls no `has_node/3', so the mock above
+        %% does not reach it.) Asserting that the walk was still RUNNING
+        %% at some point would say the same thing and race: on a tiny
+        %% fixture the whole walk is two messages, and under a loaded
+        %% suite it finishes before the reader gets there.
+        ?assertEqual({ok, Walked}, resolve(Walked)),
+        %% `Known' is in no trie the walk reads, so it can only still be
+        %% here because the re-walk added to the table rather than
+        %% replacing it.
+        ?assertEqual({ok, Known}, resolve(Known))
+    after
+        meck:unload(aeu_mp_trees)
+    end.
 
 %% The mainnet-scale defect, measured at height 1,314,674: the contracts
 %% half of the backfill read the whole trie -- every store key of every
@@ -289,6 +398,15 @@ backfill_walks_contracts_without_materialising() ->
 micro_event(Hash, PrevHash) ->
     event(#{block_hash => Hash, block_type => micro, prev_hash => PrevHash}).
 
+%% Post without the barrier, so several tops can be in the mailbox before
+%% the first one is handled. Only the burst case wants this.
+post_event(Hash, PrevHash) ->
+    aerpc_addr_index ! {gproc_ps_event, top_changed,
+                        #{info => #{block_hash => Hash,
+                                    block_type => micro,
+                                    prev_hash  => PrevHash}}},
+    ok.
+
 key_event(Hash, PrevKeyHash, Beneficiary) ->
     put_header(Hash, Beneficiary, PrevKeyHash),
     event(#{block_hash => Hash, block_type => key, prev_hash => PrevKeyHash}).
@@ -314,7 +432,7 @@ setup() ->
     ?CHAIN = ets:new(?CHAIN, [set, named_table, public]),
     put_top(<<0:32/unit:8>>),
     put_state(<<0:32/unit:8>>, aec_trees:new_without_backend()),
-    application:unset_env(aerpc, addr_delta_max_nodes),
+    application:unset_env(aerpc, addr_delta_slice_nodes),
     ok = meck:new(aec_chain, [passthrough, no_link]),
     ok = meck:expect(aec_chain, top_block_hash, fun() -> get_top() end),
     ok = meck:expect(aec_chain, get_block_state_partial,
@@ -353,7 +471,7 @@ teardown(Pid) ->
     ok = meck:unload(aec_headers),
     ok = meck:unload(aec_blocks),
     ok = meck:unload(aec_chain),
-    application:unset_env(aerpc, addr_delta_max_nodes),
+    application:unset_env(aerpc, addr_delta_slice_nodes),
     ets:delete(?CHAIN),
     ok.
 

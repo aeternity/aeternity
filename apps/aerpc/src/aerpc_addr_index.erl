@@ -14,7 +14,7 @@
 %%%
 %%% It is filled from two directions: a one-off walk of the accounts and
 %%% contracts tries at the top block, and, from then on, each new block
-%%% as `top_changed' announces it -- see `index_new_top/1', which is
+%%% as `top_changed' announces it -- see `index_new_top/2', which is
 %%% where the block type matters.
 %%%
 %%% == Why the incremental half reads the state delta ==
@@ -49,8 +49,9 @@
 %%%   {ok, Pubkey}  resolved
 %%%   unknown       backfill complete, no such address on chain -> the
 %%%                 caller may apply eth's zero/empty semantics
-%%%   incomplete    backfill still running, or the index is not up ->
-%%%                 the caller MUST return an error, never a value
+%%%   incomplete    backfill still running, a state delta is still
+%%%                 catching up, or the index is not up -> the caller
+%%%                 MUST return an error, never a value
 %%%
 %%% Crash-safety falls out of the same design: the tables are owned by
 %%% this process, so a restart empties them and `resolve/1' answers
@@ -104,20 +105,45 @@
 %% Retry delay when the chain is not up yet at start.
 -define(RETRY_MS, 1000).
 
-%% Ceiling on trie nodes visited by one state delta. A delta runs to
-%% completion inside this gen_server without yielding, so the ceiling is
-%% about responsiveness, not about correctness: a generation is bounded
-%% by the block gas limit and lands nowhere near it, but a protocol
-%% upgrade that rewrites accounts in bulk would. Exceeding it hands the
-%% work to the backfill, which is chunked and yields -- never to a
-%% partial answer, which is the defect this module exists to prevent.
--define(DEFAULT_DELTA_MAX_NODES, 50000).
+%% Trie nodes visited by ONE SCHEDULING SLICE of a state delta -- not a
+%% ceiling on the delta. A delta that fits in a slice runs exactly as it
+%% always did, in the `top_changed' handler, with no extra message and
+%% no visible state change; one that does not is suspended and resumed
+%% from the message loop, so `index_pubkey/1' and the next block are
+%% served in between rather than queued behind a 36-second walk.
+%%
+%% It is deliberately the same order as `?CHUNK': the number that matters
+%% is how long the process is unavailable, and both loops answer to that.
+%% A real mainnet generation costs ~880 nodes, so the common case never
+%% reaches the slice boundary at all.
+-define(DEFAULT_DELTA_SLICE_NODES, 2000).
+
+%% One trie's half of a delta, suspended between slices. `items' is the
+%% whole remaining walk: `walk_delta/4' keeps its worklist flat for
+%% exactly this reason, so a suspension is a list and not a stack.
+-record(walk, {which :: accounts | contracts,
+               items :: list(),
+               new   :: aeu_mtrees:mtree(),
+               old   :: aeu_mtrees:mtree()}).
+
+%% One in-flight state delta: the walks it still owes, and what it cost.
+-record(delta, {from    :: binary(),
+                to      :: binary(),
+                walks   :: [#walk{}],
+                nodes   = 0 :: non_neg_integer(),
+                yielded = false :: boolean()}).
 
 -record(state, {phase  :: pending | accounts | contracts | complete,
-                %% A delta overflowed while a walk was already in
-                %% flight, so that walk's snapshot is behind: go round
-                %% again rather than declaring `complete'.
-                resync = false :: boolean()}).
+                %% A delta could not be completed while a walk was
+                %% already in flight, so that walk's snapshot is behind:
+                %% go round again rather than declaring `complete'.
+                resync = false :: boolean(),
+                %% The suspended state delta, if one is mid-walk.
+                delta   = undefined :: undefined | #delta{},
+                %% `{From, To}' for the walk to run once that one lands.
+                %% A burst coalesces into this single pair rather than
+                %% queueing one walk per block -- see `start_delta/3'.
+                pending = undefined :: undefined | {binary(), binary()}}).
 
 %% ===================================================================
 %% Public API
@@ -179,6 +205,7 @@ status() ->
       collisions   => counter(collisions),
       deltas       => counter(deltas),
       delta_misses => counter(delta_misses),
+      delta_yields => counter(delta_yields),
       resyncs      => counter(resyncs)}.
 
 %% ===================================================================
@@ -261,12 +288,16 @@ handle_info({backfill_contracts, Iter}, State) ->
     end;
 handle_info({gproc_ps_event, top_changed, #{info := Info}}, State)
   when is_map(Info) ->
-    case index_new_top(Info) of
-        resync -> {noreply, request_resync(State)};
-        ok     -> {noreply, State}
-    end;
+    {noreply, index_new_top(Info, State)};
 handle_info({gproc_ps_event, top_changed, _Other}, State) ->
     {noreply, State};
+%% Resume the suspended delta. The token carries nothing: the walk lives
+%% in the state, so a token that outlives its delta -- one sent just
+%% before a re-walk took the work over -- resumes nothing.
+handle_info(delta_slice, #state{delta = undefined} = State) ->
+    {noreply, State};
+handle_info(delta_slice, #state{delta = Delta} = State) ->
+    {noreply, run_delta(Delta, State)};
 handle_info(_Msg, State) ->
     {noreply, State}.
 
@@ -383,14 +414,14 @@ walk_contracts(Iter, N) ->
 %%            only ever added or updated, never removed, so the net
 %%            difference between the two states is the union of every
 %%            change in between. Re-inserting is idempotent.
-index_new_top(#{block_hash := Hash} = Info) ->
+index_new_top(#{block_hash := Hash} = Info, State) ->
     case block_type(Hash, Info) of
-        micro   -> index_micro_block(Hash, Info);
-        key     -> index_key_block(Hash);
-        unknown -> ok
+        micro   -> index_micro_block(Hash, Info, State);
+        key     -> index_key_block(Hash, State);
+        unknown -> State
     end;
-index_new_top(_Other) ->
-    ok.
+index_new_top(_Other, State) ->
+    State.
 
 %% The event carries `block_type'; fall back to the header so a change in
 %% the event shape degrades to a DB read rather than to doing nothing.
@@ -402,7 +433,7 @@ block_type(Hash, _Info) ->
         error        -> unknown
     end.
 
-index_micro_block(Hash, Info) ->
+index_micro_block(Hash, Info, State) ->
     case aec_chain:get_block(Hash) of
         {ok, Block} ->
             [index_tx(STx) || STx <- aec_blocks:txs(Block)],
@@ -410,17 +441,17 @@ index_micro_block(Hash, Info) ->
         error ->
             ok
     end,
-    index_state_delta(parent_hash(Hash, Info), Hash).
+    start_delta(parent_hash(Hash, Info), Hash, State).
 
-index_key_block(Hash) ->
+index_key_block(Hash, State) ->
     case aec_chain:get_header(Hash) of
         {ok, Header} ->
             catch do_insert(aec_headers:beneficiary(Header)),
             PrevKeyHash = aec_headers:prev_key_hash(Header),
             sweep_generation(PrevKeyHash),
-            index_state_delta(PrevKeyHash, Hash);
+            start_delta(PrevKeyHash, Hash, State);
         error ->
-            ok
+            State
     end.
 
 %% The event already carries the parent; the header read is only there so
@@ -495,19 +526,34 @@ insert_from_id(Tx, Accessor) ->
 %%     pruned subtree is never read from the store at all.
 %% ===================================================================
 
-%% @returns ok when the delta ran or was genuinely empty, `resync' when
-%% it was too large to run here. Never a partial result.
-index_state_delta(FromHash, ToHash) when is_binary(FromHash),
-                                         is_binary(ToHash) ->
-    case {partial_trees(FromHash), partial_trees(ToHash)} of
+%% @doc Begin the delta for a new top, and run its first slice inline.
+%%
+%% Bursts are the reason this is not a straight function call. Mainnet
+%% has produced a generation creating 15,508 pubkeys -- 149,025 trie
+%% nodes, ~36 s of walking -- and ten more over the crossing point inside
+%% one 2,000-generation window, closer together than a re-walk takes. The
+%% old code capped the walk and handed anything above the cap to a full
+%% re-walk of both tries, which is both slower than the walk it replaced
+%% and, at that clustering, effectively continuous.
+%%
+%% So the walk is suspended and resumed instead of abandoned, and raising
+%% the cap is not the fix either: 149,025 nodes under the old code is 36
+%% seconds during which this gen_server answers nothing at all.
+start_delta(_From, To, #state{delta = InFlight} = State)
+  when InFlight =/= undefined, is_binary(To) ->
+    %% A walk is already in flight. Trie entries are only added or
+    %% updated, never removed, so ONE later walk from that walk's own
+    %% target to the newest top covers every generation in between: a
+    %% burst costs one catch-up walk, not one walk per block.
+    State#state{pending = coalesce(State#state.pending, InFlight#delta.to, To)};
+start_delta(From, To, State) when is_binary(From), is_binary(To) ->
+    case {partial_trees(From), partial_trees(To)} of
         {{ok, Old}, {ok, New}} ->
-            %% Either trie overflowing means the same thing, and both
-            %% have to be normalised here: `handle_info/2' acts on
-            %% `ok | resync' and nothing else.
-            case {delta_trie(accounts, New, Old),
-                  delta_trie(contracts, New, Old)} of
-                {ok, ok} -> ok;
-                _Overflowed -> resync
+            try new_delta(From, To, New, Old) of
+                #delta{walks = []} -> State;   %% both roots unchanged
+                Delta              -> run_delta(Delta, State)
+            catch Class:Reason:St ->
+                delta_failed(setup, Class, Reason, St, State)
             end;
         _Unavailable ->
             %% The state is gone or not written yet, so this block's
@@ -516,39 +562,120 @@ index_state_delta(FromHash, ToHash) when is_binary(FromHash),
             %% a key block it stays open until a rebuild, and either way
             %% a silent zero is what this module exists to prevent.
             bump(delta_misses),
-            ok
+            State
     end;
-index_state_delta(_From, _To) ->
+start_delta(_From, _To, State) ->
     bump(delta_misses),
-    ok.
+    State.
+
+%% The `from' of a deferred walk is pinned to the in-flight walk's target
+%% the first time we defer; only the target moves as more tops arrive.
+coalesce(undefined, InFlightTo, To) -> {InFlightTo, To};
+coalesce({From, _Superseded}, _InFlightTo, To) -> {From, To}.
 
 partial_trees(Hash) ->
     try aec_chain:get_block_state_partial(Hash, [accounts, contracts])
     catch _:_ -> error
     end.
 
-delta_trie(Which, NewTrees, OldTrees) ->
-    try
-        {NewRoot, NewTree} = trie(Which, NewTrees),
-        {OldRoot, OldTree} = trie(Which, OldTrees),
-        case NewRoot =:= OldRoot of
-            true ->
-                ok;
-            false ->
-                Roots = aeu_mp_trees:unfold(<<>>, <<>>, NewTree),
-                case walk_delta(Roots, NewTree, OldTree, delta_max_nodes()) of
-                    {ok, _Left} -> bump(deltas), ok;
-                    overflow    -> overflow
-                end
-        end
+new_delta(From, To, NewTrees, OldTrees) ->
+    #delta{from  = From,
+           to    = To,
+           walks = [W || Which <- [accounts, contracts],
+                         W <- [mk_walk(Which, NewTrees, OldTrees)],
+                         W =/= skip]}.
+
+mk_walk(Which, NewTrees, OldTrees) ->
+    {NewRoot, NewTree} = trie(Which, NewTrees),
+    {OldRoot, OldTree} = trie(Which, OldTrees),
+    case NewRoot =:= OldRoot of
+        true  -> skip;
+        false -> #walk{which = Which, new = NewTree, old = OldTree,
+                       items = aeu_mp_trees:unfold(<<>>, <<>>, NewTree)}
+    end.
+
+run_delta(Delta, State) ->
+    try run_slice(Delta, delta_slice_nodes()) of
+        {done, Delta1} ->
+            finish_delta(Delta1, State);
+        {suspended, Delta1} ->
+            self() ! delta_slice,
+            State#state{delta = mark_yielded(Delta1)}
     catch Class:Reason:St ->
-        %% Never take the index process down over a delta: a restart
-        %% would empty the table and answer `incomplete' for every
-        %% address until the walk finished.
-        lager:error("aerpc address index ~p delta failed: ~p:~p ~p",
-                    [Which, Class, Reason, St]),
-        bump(delta_misses),
-        ok
+        delta_failed(walking(Delta), Class, Reason, St, State)
+    end.
+
+run_slice(#delta{walks = []} = D, _Budget) ->
+    {done, D};
+run_slice(#delta{walks = [W | Rest]} = D, Budget) when Budget > 0 ->
+    case walk_delta(W#walk.items, W#walk.new, W#walk.old, Budget) of
+        {ok, Left} ->
+            bump(deltas),
+            run_slice(D#delta{walks = Rest,
+                              nodes = D#delta.nodes + Budget - Left}, Left);
+        {suspended, Items} ->
+            {suspended, D#delta{walks = [W#walk{items = Items} | Rest],
+                                nodes  = D#delta.nodes + Budget}}
+    end;
+run_slice(D, _Exhausted) ->
+    {suspended, D}.
+
+%% The first suspension is where this delta stops being invisible: from
+%% here until it lands, the index is knowingly behind the top, so a miss
+%% must not become eth's confident zero.
+mark_yielded(#delta{yielded = true} = D) ->
+    D;
+mark_yielded(D) ->
+    bump(delta_yields),
+    suspend_completeness(),
+    D#delta{yielded = true}.
+
+finish_delta(#delta{yielded = Yielded, nodes = Nodes}, State) ->
+    case Yielded of
+        true  -> lager:info("aerpc address index caught up across a large "
+                            "state delta: ~p trie nodes", [Nodes]);
+        false -> ok
+    end,
+    State1 = State#state{delta = undefined},
+    case State1#state.pending of
+        undefined ->
+            %% Idle and caught up -- and only now, because a pending walk
+            %% means the index is still behind whatever raised it.
+            resume_completeness(),
+            State1;
+        {From, To} ->
+            start_delta(From, To, State1#state{pending = undefined})
+    end.
+
+%% A delta that stops half-way has already inserted part of what it
+%% found, so it can neither be replayed from the start nor written off as
+%% a miss. Hand it to the re-walk, which is the one path that closes a
+%% gap this module cannot see the shape of. Never crash out of it: a
+%% restart would empty the table and answer `incomplete' for every
+%% address until the walk finished.
+delta_failed(Where, Class, Reason, St, State) ->
+    lager:error("aerpc address index ~p delta failed: ~p:~p ~p",
+                [Where, Class, Reason, St]),
+    bump(delta_misses),
+    request_resync(State#state{delta = undefined, pending = undefined}).
+
+walking(#delta{walks = [#walk{which = Which} | _]}) -> Which;
+walking(_Delta)                                     -> unknown.
+
+%% `catching_up' is `complete' minus the promise: every entry already in
+%% the table still answers, and only a MISS changes meaning, from eth's
+%% zero back to `incomplete'. Both are idempotent and neither overwrites
+%% `running', so a re-walk that starts mid-delta keeps its own state.
+suspend_completeness() ->
+    case backfill_state() of
+        complete -> set_backfill(catching_up);
+        _Other   -> ok
+    end.
+
+resume_completeness() ->
+    case backfill_state() of
+        catching_up -> set_backfill(complete);
+        _Other      -> ok
     end.
 
 %% Rebuild the bare Merkle trie from the accessors each wrapper exports,
@@ -563,10 +690,17 @@ trie(contracts, Trees) ->
 mk_trie({error, empty}, _DB)  -> {empty, aeu_mtrees:empty()};
 mk_trie({ok, Hash}, {ok, DB}) -> {Hash, aeu_mtrees:new_with_backend(Hash, DB)}.
 
+%% Suspendable because the worklist is FLAT. Descending used to recurse
+%% -- walk the children, then carry the leftover budget back to the
+%% siblings -- which kept half the remaining walk on the Erlang stack
+%% where nothing can store it. Pushing the children onto the front of the
+%% same list keeps the depth-first order and the identical set of
+%% inserts, and makes `Items' the whole of what is left to do: a
+%% suspension is then just that list.
 walk_delta([], _New, _Old, Budget) ->
     {ok, Budget};
-walk_delta(_Items, _New, _Old, Budget) when Budget =< 0 ->
-    overflow;
+walk_delta(Items, _New, _Old, Budget) when Budget =< 0 ->
+    {suspended, Items};
 walk_delta([{leaf, Path} | T], New, Old, Budget) ->
     _ = insert_path(Path),
     walk_delta(T, New, Old, Budget - 1);
@@ -582,10 +716,7 @@ walk_delta([{node, Path, Node} | T], New, Old, Budget) ->
                     walk_delta(T, New, Old, Budget - 1);
                 _NoOrMaybe ->
                     Children = aeu_mp_trees:unfold(Path, Node, New),
-                    case walk_delta(Children, New, Old, Budget - 1) of
-                        overflow    -> overflow;
-                        {ok, Left} -> walk_delta(T, New, Old, Left)
-                    end
+                    walk_delta(Children ++ T, New, Old, Budget - 1)
             end
     end.
 
@@ -608,11 +739,11 @@ insert_path(Path) when is_bitstring(Path), bit_size(Path) >= 256 ->
 insert_path(_Shorter) ->
     deeper.
 
-delta_max_nodes() ->
-    case application:get_env(aerpc, addr_delta_max_nodes,
-                             ?DEFAULT_DELTA_MAX_NODES) of
+delta_slice_nodes() ->
+    case application:get_env(aerpc, addr_delta_slice_nodes,
+                             ?DEFAULT_DELTA_SLICE_NODES) of
         N when is_integer(N), N > 0 -> N;
-        _Other                      -> ?DEFAULT_DELTA_MAX_NODES
+        _Other                      -> ?DEFAULT_DELTA_SLICE_NODES
     end.
 
 %% ===================================================================
@@ -634,7 +765,7 @@ request_resync(State) ->
 start_resync(State) ->
     bump(resyncs),
     lager:warning("aerpc address index re-walking the tries: a state "
-                  "delta exceeded ~p nodes", [delta_max_nodes()]),
+                  "delta could not be completed", []),
     set_backfill(running),
     self() ! start_backfill,
     State#state{phase = pending}.
@@ -672,7 +803,8 @@ hex(Bin) -> binary:encode_hex(Bin).
 
 reset_meta() ->
     ets:insert(?META, [{backfill, pending}, {indexed, 0}, {collisions, 0},
-                       {deltas, 0}, {delta_misses, 0}, {resyncs, 0}]),
+                       {deltas, 0}, {delta_misses, 0}, {delta_yields, 0},
+                       {resyncs, 0}]),
     ok.
 
 set_backfill(Value) ->
