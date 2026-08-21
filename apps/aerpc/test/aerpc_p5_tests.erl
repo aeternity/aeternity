@@ -59,7 +59,10 @@ delta_test_() ->
        "crashing the index",
        fun oversized_contract_delta_re_walks/0},
       {"the re-walk keeps what is already known",
-       fun re_walk_keeps_known_entries/0}]}.
+       fun re_walk_keeps_known_entries/0},
+      {"the backfill reads the contracts trie rather than materialising "
+       "it, and a store does not become entries of its own",
+       fun backfill_walks_contracts_without_materialising/0}]}.
 
 %% ===================================================================
 %% Cases
@@ -242,6 +245,39 @@ re_walk_keeps_known_entries() ->
     %% `Known' is in no trie the walk reads, so it can only still be here
     %% because the re-walk added to the table rather than replacing it.
     ?assertEqual({ok, Known}, resolve(Known)).
+
+%% The mainnet-scale defect, measured at height 1,314,674: the contracts
+%% half of the backfill read the whole trie -- every store key of every
+%% contract -- into one list through `aect_state_tree:to_list/1', spending
+%% 10m37s of a 12m26s walk and a 2.12 GiB process heap to insert nothing
+%% the accounts walk had not already inserted.
+%%
+%% So what this case pins is that `to_list/1' is never called. A purely
+%% functional assertion would have passed against the old code too: it was
+%% correct, and only ruinous.
+backfill_walks_contracts_without_materialising() ->
+    Owner  = pk(100),
+    Cs     = [contract(Owner, N, <<"code">>) || N <- lists:seq(1, 5)],
+    CtTree = lists:foldl(fun aect_state_tree:insert_contract/2,
+                         aect_state_tree:empty(), Cs),
+    put_state(?H_NEW, trees_with_contracts([Owner], CtTree)),
+    put_top(?H_NEW),
+    ok = meck:new(aect_state_tree, [passthrough, no_link]),
+    ok = meck:expect(aect_state_tree, to_list,
+                     fun(_Tree) -> error(backfill_must_not_materialise) end),
+    try
+        ok = aerpc_addr_index:rebuild(),
+        wait_for_backfill(complete, 100),
+
+        ?assertEqual({ok, Owner}, resolve(Owner)),
+        [?assertEqual({ok, aect_contracts:pubkey(C)},
+                      resolve(aect_contracts:pubkey(C))) || C <- Cs],
+        %% One owner and five contracts. Each contract carries a store
+        %% under its own 32 bytes, and none of those keys is an entry.
+        ?assertEqual(6, maps:get(indexed, status()))
+    after
+        meck:unload(aect_state_tree)
+    end.
 
 %% ===================================================================
 %% Driving the index

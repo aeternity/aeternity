@@ -93,6 +93,14 @@
 %% the top_changed handler are not blocked behind a full trie walk.
 -define(CHUNK, 2000).
 
+%% A contracts-trie key is either a bare 32-byte contract pubkey or a
+%% store key under that contract's own 32 bytes, so 64 nibbles is exactly
+%% the depth at which the contracts live. Handed to the iterator as
+%% `max_path_length' it is a pruning bound rather than a filter: the walk
+%% stops descending at that depth and never reads a store node from the
+%% store at all.
+-define(CONTRACT_KEY_NIBBLES, 64).
+
 %% Retry delay when the chain is not up yet at start.
 -define(RETRY_MS, 1000).
 
@@ -225,14 +233,19 @@ handle_info({backfill_accounts, Iter, Trees}, State) ->
             %% Contract pubkeys share the account key space, but a
             %% contract with no account entry would still have to
             %% resolve, so walk the contracts trie too.
-            Contracts = contract_pubkeys(Trees),
-            self() ! {backfill_contracts, Contracts},
+            %% Not `Iter': the accounts iterator is still bound by the
+            %% function head, so matching `{ok, Iter}' here would compare
+            %% against it rather than bind the new one.
+            case contracts_iterator(Trees) of
+                {ok, CtIter} -> self() ! {backfill_contracts, CtIter};
+                error        -> self() ! {backfill_contracts, done}
+            end,
             {noreply, State#state{phase = contracts}}
     end;
-handle_info({backfill_contracts, Pubkeys}, State) ->
-    case walk_list(Pubkeys, ?CHUNK) of
-        {more, Rest} ->
-            self() ! {backfill_contracts, Rest},
+handle_info({backfill_contracts, Iter}, State) ->
+    case walk_contracts(Iter, ?CHUNK) of
+        {more, Iter1} ->
+            self() ! {backfill_contracts, Iter1},
             {noreply, State};
         done when State#state.resync ->
             %% Do not claim `complete' on a snapshot we already know is
@@ -288,18 +301,55 @@ walk_accounts(Iter, N) ->
             walk_accounts(Iter1, N - 1)
     end.
 
-walk_list([], _N)       -> done;
-walk_list(Rest, 0)      -> {more, Rest};
-walk_list([PK | T], N)  -> do_insert(PK), walk_list(T, N - 1).
-
 %% The contracts trie also holds each contract's store, under keys
 %% prefixed with the 32-byte contract id. Only the bare 32-byte keys are
 %% contracts.
-contract_pubkeys(Trees) ->
+%%
+%% Reading that as a list -- `aect_state_tree:to_list/1' -- was measured
+%% at mainnet scale and is where this backfill spent almost all of its
+%% cost: 10m37s of a 12m26s walk and every byte of a 2.12 GiB process
+%% heap, to insert zero entries that the accounts walk had not already
+%% inserted. Two separate faults, and both are removed here rather than
+%% traded off:
+%%
+%%   * it materialises the WHOLE trie, stores included, onto one process
+%%     heap, so the peak is the size of the trie and not of the answer;
+%%   * it is the one step of the backfill outside the `?CHUNK' loop, so
+%%     for its duration this gen_server answers nothing.
+%%
+%% An iterator bounded to `?CONTRACT_KEY_NIBBLES' fixes both. It is
+%% driven `?CHUNK' entries at a time like the accounts walk, so nothing
+%% accumulates and the process stays responsive throughout; and because
+%% the bound prunes the descent, the store subtrees the old code read,
+%% decoded and then discarded are never read at all.
+%%
+%% Note what is NOT claimed: that the contracts walk can be dropped. On
+%% mainnet at height 1,314,674 it inserted nothing, because every
+%% contract there also holds an accounts-trie entry -- but that is an
+%% observation about one chain at one height, not an invariant this
+%% module is entitled to assume. The walk stays; only its cost goes.
+contracts_iterator(Trees) ->
     try
-        [PK || {PK, _V} <- aect_state_tree:to_list(aec_trees:contracts(Trees)),
-               byte_size(PK) =:= 32]
-    catch _:_ -> []
+        {_Root, Tree} = trie(contracts, Trees),
+        {ok, aeu_mtrees:iterator(Tree,
+                                 [{max_path_length, ?CONTRACT_KEY_NIBBLES}])}
+    catch _:_ -> error
+    end.
+
+walk_contracts(done, _N) ->
+    done;
+walk_contracts(Iter, 0) ->
+    {more, Iter};
+walk_contracts(Iter, N) ->
+    case aeu_mtrees:iterator_next(Iter) of
+        '$end_of_table' ->
+            done;
+        {Key, _Value, Iter1} ->
+            %% The bound already stops the walk above every store key, so
+            %% `do_insert/1' rejecting anything but 32 bytes is a belt on
+            %% top of it rather than the filter it used to be.
+            do_insert(Key),
+            walk_contracts(Iter1, N - 1)
     end.
 
 %% ===================================================================
