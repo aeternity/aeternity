@@ -11,6 +11,14 @@
   configured `reporting_utilization_override` alongside it, rather than a `0` a client reads as a
   free chain — a quiet chain is precisely when the floor matters.
 
+* **The floor alone may not reach a client — set both options.** The official JS SDK checks
+  `utilization` *before* it looks at `min_gas_price`: below `70` it discards the reported price and
+  builds with its own built-in minimum of `1000000000` aettos, whatever this node advertised (as of
+  `aepp-sdk-js` 14.1.1). It reads the **1-minute** bucket, the one a quiet chain is likeliest to
+  have no observation in. So a node that sets `min_relay_gas_price` and leaves
+  `reporting_utilization_override` at its default `0` advertises a floor that such a client
+  ignores — set the override alongside the floor, at `70` or above, if the floor is to be used.
+
 * Both are **off by default** — `min_relay_gas_price` is disabled when absent or `0`, and
   `reporting_utilization_override` defaults to `0` — so an existing node behaves exactly as before.
   Both are advanced settings; leave them unset unless you have a specific reason.
