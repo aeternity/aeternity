@@ -2028,9 +2028,9 @@ get_recent_gas_prices(_Config) ->
 %% with it.
 -define(OVERRIDE_UTILIZATION, 71).
 
-%% Reporting-only: it may raise the advertised min_gas_price and, only where it
-%% actually did raise it, the utilization alongside. It must lower neither, and
-%% must not move the floor the mempool enforces.
+%% Reporting-only: the price is an outright override once configured, the
+%% utilization is an independent bottom cap - neither gates on the other, and
+%% neither moves the floor the mempool enforces.
 get_recent_gas_prices_min_relay(_Config) ->
     Host = external_address(),
     Observed = min_gas_price(),
@@ -2041,10 +2041,8 @@ get_recent_gas_prices_min_relay(_Config) ->
     %%     an empty response they would all hold vacuously.
     %%     Every bucket reporting `Observed' is also what says none of them is a
     %%     no-observation window - those report 0 (aehttp_logic:min_gas_price/1).
-    %%     So this case answers for observed windows only, and the floor's
-    %%     behaviour on a no-observation window is pinned by eunit, in
-    %%     aehttp_logic_tests:empty_window_is_floored_test_/0. It is also why
-    %%     (c), (c2) and (d) below can expect `Observed' in every bucket.
+    %%     So this case answers for observed windows only; (d) and (e) below rely
+    %%     on the same baseline since they configure no override at all.
     Base = recent_gas_prices(Host),
     ?assertEqual(4, length(Base)),
     ?assertEqual([Observed || _ <- Base], [ GP || {GP, _U} <- Base ]),
@@ -2082,21 +2080,27 @@ get_recent_gas_prices_min_relay(_Config) ->
     ?assertEqual([Above || _ <- RaisedHonest], [ GP || {GP, _U} <- RaisedHonest ]),
     ?assertEqual([ U || {_GP, U} <- Base ], [ U || {_GP, U} <- RaisedHonest ]),
 
-    %% (c) THE NO-OP CASE. A floor below the observed price must not lower what
-    %%     is advertised, and buys no raised utilization either.
+    %% (c) THE PRICE OVERRIDE APPLIES EVEN BELOW THE OBSERVED PRICE. It is an
+    %%     outright override, not a bottom cap: a floor below what the chain
+    %%     shows is still what gets advertised, not the (higher) real figure.
+    %%     The utilization bottom cap is independent of that - it is still
+    %%     raised to the override here even though the price override did not
+    %%     raise anything relative to Observed.
     ok = set_min_relay(1, ?OVERRIDE_UTILIZATION),
     NotLowered = recent_gas_prices(Host),
-    ?assertEqual([Observed || _ <- NotLowered], [ GP || {GP, _U} <- NotLowered ]),
-    ?assertEqual([ U || {_GP, U} <- Base ], [ U || {_GP, U} <- NotLowered ]),
+    ?assertEqual([1 || _ <- NotLowered], [ GP || {GP, _U} <- NotLowered ]),
+    ?assertEqual([?OVERRIDE_UTILIZATION || _ <- NotLowered], [ U || {_GP, U} <- NotLowered ]),
 
-    %% (c2) the boundary: a floor set exactly AT the observed price is still not
-    %%      moving it, so it buys no raised utilization either
+    %% (c2) a floor set exactly AT the observed price is indistinguishable from
+    %%      (c) in the reported price, since both are the configured value; the
+    %%      utilization bottom cap still applies regardless.
     ok = set_min_relay(Observed, ?OVERRIDE_UTILIZATION),
     AtBoundary = recent_gas_prices(Host),
     ?assertEqual([Observed || _ <- AtBoundary], [ GP || {GP, _U} <- AtBoundary ]),
-    ?assertEqual([ U || {_GP, U} <- Base ], [ U || {_GP, U} <- AtBoundary ]),
+    ?assertEqual([?OVERRIDE_UTILIZATION || _ <- AtBoundary], [ U || {_GP, U} <- AtBoundary ]),
 
-    %% (c3) ...and one aetto above it is the other side of that boundary
+    %% (c3) ...and one aetto above it changes nothing about the shape of the
+    %%      result - the override is exact either side of this boundary
     ok = set_min_relay(Observed + 1, ?OVERRIDE_UTILIZATION),
     PastBoundary = recent_gas_prices(Host),
     ?assertEqual([Observed + 1 || _ <- PastBoundary], [ GP || {GP, _U} <- PastBoundary ]),
