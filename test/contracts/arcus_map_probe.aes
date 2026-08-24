@@ -1,13 +1,17 @@
-// Store-map read probe for the Arcus dry-run gas tripwire. The values are large
-// (passed at init) so the map is a real store map, not inlined, and a single read
-// costs materially more at the repriced Arcus rate: `lookup` exercises the
-// store_map_lookup gate, `member` the store_map_member gate.
+// Store-read probe for the Arcus dry-run gas tripwire. Map values are large
+// (passed at init) so the map is a real store map, not inlined; `a`/`b` are
+// separate registers, so `smalls` separates a per-read floor from a per-call
+// one; `big` sits past the ~190-byte crossover where the floor must be inert.
 contract ArcusMapProbe =
-    record state = { m : map(int, string) }
+    record state = { m : map(int, string), a : int, b : int, big : string }
 
     entrypoint init(v : string) : state =
-        { m = {[1] = v, [2] = v, [3] = v, [4] = v, [5] = v} }
+        { m = {[1] = v, [2] = v, [3] = v, [4] = v, [5] = v}, a = 1, b = 2, big = v }
 
     entrypoint lookup(k : int) : string = state.m[k]
 
     entrypoint member(k : int) : bool = Map.member(k, state.m)
+
+    entrypoint smalls() : int = state.a + state.b
+
+    entrypoint big() : string = state.big

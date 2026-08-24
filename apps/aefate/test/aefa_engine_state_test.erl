@@ -2,9 +2,10 @@
 %%% @copyright (C) 2026, Aeternity Anstalt
 %%% @doc
 %%%    Pins the aefa_engine_state:aefa_stores_for_protocol/1 dispatch
-%%%    boundary, and regression-tests that pre-Iris finalize/1 does not
+%%%    boundary, regression-tests that pre-Iris finalize/1 does not
 %%%    `undef` (aefa_stores_lima has no terms_to_finalize/1; finalize/1
-%%%    must call the live aefa_stores module directly for that step).
+%%%    must call the live aefa_stores module directly for that step), and
+%%%    pins the dry-run store-read gas floor.
 %%% @end
 %%%-------------------------------------------------------------------
 -module(aefa_engine_state_test).
@@ -122,6 +123,76 @@ lima_finalize_with_untouched_map_test() ->
     ?FATE_STORE_MAP(_Cache, MapId) = MapRegVal,
     {StoreList, _} = aefa_stores:store_map_to_list(?SR1_CONTRACT_PUBKEY, MapId, ReadBack),
     ?assertEqual([{map_key(), map_value()}], StoreList).
+
+%%%===================================================================
+%%% 4. Dry-run store-read gas floor
+%%%
+%%% The end-to-end probe in aec_dry_run_tests only reads small registers
+%%% and is skipped on pre-Ceres lanes, so the no-op cases and the protocol
+%%% table are pinned here or nowhere.
+%%%===================================================================
+
+%% Flat pre-Arcus per-read charge the floor tops a repriced read up to.
+-define(PRE_ARCUS_FLAT_READ_GAS, 2000).
+
+store_read_floor_test_() ->
+    [ {"no floor recorded: on-chain reads are never touched",
+       ?_assertEqual(0, floor_spend(undefined, 100))}
+    , {"below the flat charge: topped up to exactly it",
+       ?_assertEqual(?PRE_ARCUS_FLAT_READ_GAS - 100, floor_spend(?CERES_PROTOCOL_VSN, 100))}
+    , {"exactly at it: nothing added",
+       ?_assertEqual(0, floor_spend(?CERES_PROTOCOL_VSN, ?PRE_ARCUS_FLAT_READ_GAS))}
+      %% Past the ~190-byte crossover a read already costs more than the flat charge.
+    , {"above it: nothing added",
+       ?_assertEqual(0, floor_spend(?CERES_PROTOCOL_VSN, ?PRE_ARCUS_FLAT_READ_GAS * 3))}
+    , {"floor version at Arcus: inert, not a 2000 over-charge",
+       ?_assertEqual(0, floor_spend(?ARCUS_PROTOCOL_VSN, 100))}
+    , {"floor version past Arcus: same",
+       ?_assertEqual(0, floor_spend(?SALUS_PROTOCOL_VSN, 100))}
+      %% Ceres sits above both table entries, so only these three pin the table.
+    , {"floor version at Iris: the flat charge starts there",
+       ?_assertEqual(?PRE_ARCUS_FLAT_READ_GAS - 100, floor_spend(?IRIS_PROTOCOL_VSN, 100))}
+    , {"floor version at Lima: reads were free, so no floor",
+       ?_assertEqual(0, floor_spend(?LIMA_PROTOCOL_VSN, 100))}
+    , {"floor version below Lima: get_gas/2's base clause, still free",
+       ?_assertEqual(0, floor_spend(?ROMA_PROTOCOL_VSN, 100))}
+    , {"floor on a non-dry-run env: dropped at engine-state construction",
+       ?_assertEqual(0, floor_spend(?CERES_PROTOCOL_VSN, 100, _DryRun = false))}
+    ].
+
+%% The top-up is an ordinary spend, so it aborts like one.
+store_read_floor_out_of_gas_test() ->
+    ES = floor_engine_state(?CERES_PROTOCOL_VSN, _Gas = 500),
+    ?assertThrow({aefa_fate, _, _},
+                 aefa_engine_state:spend_gas_for_store_read_floor(100, ES)).
+
+%% Gas the floor adds on top of a read the Arcus formula already charged for.
+floor_spend(FloorVsn, Charged) ->
+    floor_spend(FloorVsn, Charged, _DryRun = true).
+
+floor_spend(FloorVsn, Charged, DryRun) ->
+    Gas = 1000000,
+    ES = floor_engine_state(FloorVsn, Gas, DryRun),
+    Gas - aefa_engine_state:gas(
+            aefa_engine_state:spend_gas_for_store_read_floor(Charged, ES)).
+
+floor_engine_state(FloorVsn, Gas) ->
+    floor_engine_state(FloorVsn, Gas, _DryRun = true).
+
+floor_engine_state(FloorVsn, Gas, DryRun) ->
+    TxEnv0 = aetx_env:set_dry_run(aetx_env:tx_env(_Height = 1, ?ARCUS_PROTOCOL_VSN), DryRun),
+    TxEnv  = case FloorVsn of
+                 undefined -> TxEnv0;
+                 _         -> aetx_env:set_metering_floor_version(TxEnv0, FloorVsn)
+             end,
+    ChainApi = aefa_chain_api:new(#{ gas_price => 1
+                                   , fee       => 0
+                                   , origin    => ?SR1_CALLER_PUBKEY
+                                   , trees     => trees_with_one_contract()
+                                   , tx_env    => TxEnv
+                                   }),
+    aefa_engine_state:new(Gas, _Value = 0, #{caller => ?SR1_CALLER_PUBKEY},
+                          aefa_stores:new(), ChainApi, #{}, ?VM_FATE_SOPHIA_2).
 
 map_key() -> aeb_fate_data:make_string(<<"k">>).
 absent_key() -> aeb_fate_data:make_string(<<"missing">>).

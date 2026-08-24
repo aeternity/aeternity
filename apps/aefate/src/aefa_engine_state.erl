@@ -86,6 +86,7 @@
         , push_return_type_check/4
         , spend_gas/2
         , spend_gas_for_new_cells/2
+        , spend_gas_for_store_read_floor/2
         , spend_gas_for_store_values/2
         , spend_gas_for_traversal/3
         , spend_gas_for_traversal/4
@@ -148,6 +149,7 @@
               %% for the lifetime of the engine state belong here - the tx_env is
               %% not immutable as a whole, primops keep appending events to it.
             , consensus_version :: non_neg_integer()
+            , metering_floor_version :: undefined | non_neg_integer()
             , in_auth_context   :: boolean()
             , debug_info        :: debug_info()
             }).
@@ -184,9 +186,19 @@ new(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion) ->
        , trace             = []
        , vm_version        = VMVersion
        , consensus_version = aetx_env:consensus_version(TxEnv)
+       , metering_floor_version = dry_run_metering_floor(TxEnv)
        , in_auth_context   = undefined =/= aetx_env:ga_tx_hash(TxEnv)
        , debug_info        = disabled
        }.
+
+%% aec_dry_run's gate is a convention a later caller could break; this one is
+%% structural. A floor reaching block application would charge this node up to
+%% 1890 gas per read that the rest of the network does not.
+dry_run_metering_floor(TxEnv) ->
+    case aetx_env:dry_run(TxEnv) of
+        true  -> aetx_env:metering_floor_version(TxEnv);
+        false -> undefined
+    end.
 
 -spec aefa_stores(state()) -> module().
 aefa_stores(#es{ consensus_version = Protocol }) ->
@@ -542,6 +554,28 @@ spend_gas(GasOpts, ES) when is_list(GasOpts) ->
 get_gas(_Protocol, [{_, Gas}])                                       -> Gas;
 get_gas(Protocol, [{Protocol1, Gas} | _]) when Protocol >= Protocol1 -> Gas;
 get_gas(Protocol, [_ | Rest])                                        -> get_gas(Protocol, Rest).
+
+%% Second copy of the table in aefa_fate:lookup_in_store/2's pre-Arcus branch on
+%% purpose: that one prices already-forked blocks, so it is not worth an edit to
+%% share. Drift between the copies red-fails aec_dry_run_tests' small-store probe.
+-define(PRE_ARCUS_STORE_READ_GAS, [{?IRIS_PROTOCOL_VSN, 2000}, {?LIMA_PROTOCOL_VSN, 0}]).
+
+%% Top a repriced store read up to what the activated protocol charges. Arcus
+%% prices a read as base + per-byte, which only overtakes the flat pre-Arcus
+%% charge above ~190 bytes -- below it a stepped-up dry-run would under-report.
+-spec spend_gas_for_store_read_floor(non_neg_integer(), state()) -> state().
+spend_gas_for_store_read_floor(_Charged, #es{metering_floor_version = undefined} = ES) ->
+    ES;
+spend_gas_for_store_read_floor(Charged, #es{metering_floor_version = Protocol} = ES)
+  when is_integer(Protocol), Protocol < ?ARCUS_PROTOCOL_VSN ->
+    case get_gas(Protocol, ?PRE_ARCUS_STORE_READ_GAS) - Charged of
+        Extra when Extra > 0 -> spend_gas(Extra, ES);
+        _                    -> ES
+    end;
+spend_gas_for_store_read_floor(_Charged, ES) ->
+    %% At Arcus+ the repricing IS the activated cost, so a floor would over-charge.
+    %% Unreachable via aec_dry_run's gate, but this also runs during consensus.
+    ES.
 
 %% The gas price per cell increases by 1 for each kibiword (each 1024 64-bit word) used.
 -spec spend_gas_for_new_cells(integer(), state()) -> state().

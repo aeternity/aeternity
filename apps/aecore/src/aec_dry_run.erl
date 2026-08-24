@@ -187,7 +187,10 @@ maybe_force_arcus_metering(Env, true) ->
     case store_read_gas_metering_enabled()
          andalso Base >= ?CERES_PROTOCOL_VSN
          andalso Base < ?ARCUS_PROTOCOL_VSN of
-        true  -> aetx_env:set_consensus_version(Env, ?ARCUS_PROTOCOL_VSN);
+        true  ->
+            Env1 = aetx_env:set_consensus_version(Env, ?ARCUS_PROTOCOL_VSN),
+            %% Recorded with the step-up so version and floor cannot drift apart.
+            aetx_env:set_metering_floor_version(Env1, Base);
         false -> Env
     end;
 maybe_force_arcus_metering(Env, false) ->

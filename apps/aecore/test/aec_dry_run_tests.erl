@@ -213,6 +213,21 @@ arcus_metering_cannot_be_disabled_once_active_test() ->
         application:unset_env(aehttp, dry_run)
     end.
 
+%% Only a stepped-up env carries a floor; every other env must leave gas alone.
+arcus_metering_records_gas_floor_test() ->
+    application:unset_env(aehttp, dry_run),
+    Env = ceres_dry_run_env(),
+    Floor = fun(E) -> aetx_env:metering_floor_version(E) end,
+    ?assertEqual(?CERES_PROTOCOL_VSN,
+                 Floor(?TEST_MODULE:maybe_force_arcus_metering(Env, true))),
+    %% replay/includability: no step-up, so nothing to floor
+    ?assertEqual(undefined, Floor(?TEST_MODULE:maybe_force_arcus_metering(Env, false))),
+    %% already at Arcus: the repricing IS the activated cost
+    ArcusEnv = aetx_env:set_dry_run(aetx_env:tx_env(1, ?ARCUS_PROTOCOL_VSN), true),
+    ?assertEqual(undefined, Floor(?TEST_MODULE:maybe_force_arcus_metering(ArcusEnv, true))),
+    %% and an ordinary on-chain env never carries one
+    ?assertEqual(undefined, Floor(aetx_env:tx_env(1, ?CERES_PROTOCOL_VSN))).
+
 %% Historical (pre-Ceres) replay is NOT bumped -- forcing Arcus there would
 %% cross the >= Ceres gates (incl. the contract-vs-name tx-validity gate),
 %% changing more than gas. Keep replay on its exact protocol.
@@ -258,15 +273,25 @@ v6_call_tx_valid_at_ceres_and_forced_arcus_test() ->
 %%%  - spend + store-free call: byte-identical result AND identical gas_used
 %%%    (no store reads -> zero repricing delta);
 %%%  - store reads at all three gate sites (register read, map lookup, map
-%%%    member): identical return value/validity, gas_used strictly higher.
+%%%    member): identical return value/validity, gas_used strictly higher;
+%%%  - registers either side of the ~190-byte crossover, and a protected
+%%%    inner call under a gas cap tight enough that one register read
+%%%    decides it -- the one way a gas difference surfaces as a value.
 %%% It also proves, end-to-end through dry_run/3, that (a) the repricing turns
 %%% a Ceres-adequate call into out_of_gas under a tight budget (the public
-%%% endpoint caps at ?DEFAULT_GAS_LIMIT = 6M), and (b) the replay profile is
-%%% NOT re-metered -- it keeps the block's real Ceres cost. Red-fails if any
-%%% future >= Arcus/Salus gate leaks non-gas behaviour into the forcing.
+%%% endpoint caps at ?DEFAULT_GAS_LIMIT = 6M), (b) the replay profile is NOT
+%%% re-metered, and (c) a gas limit sized off a forced-Arcus estimate funds
+%%% the same call on the real chain. Red-fails if any future >= Arcus/Salus
+%%% gate leaks non-gas behaviour into the forcing.
 %%%===================================================================
 
 -define(DUMMY_HASH, <<0:32/unit:8>>).
+
+%% Measured: the two meterings disagree on counter.get() behind a remote call
+%% over a ~1890 gas window, and this sits inside it. ?GAS_CAP_CLEARS is one flat
+%% store-read charge higher, so its flip to Some(_) pins that placement.
+-define(INNER_GAS_CAP,  5900).
+-define(GAS_CAP_CLEARS, ?INNER_GAS_CAP + 2000).
 
 arcus_dry_run_equivalence_test_() ->
     %% Deploys a Ceres FATE contract, so it only runs on Ceres+ eunit lanes;
@@ -287,26 +312,52 @@ equiv_setup() ->
     {IdPK, S2} = deploy(Vsn, identity,        [],        Owner, Env, S1),
     {StPK, S3} = deploy(Vsn, storage_tester,  [],        Owner, Env, S2),
     {MpPK, S4} = deploy(Vsn, arcus_map_probe, [BigStr],  Owner, Env, S3),
-    Trees = aect_test_utils:trees(S4),
+    %% Small, map-free state: one int register, the case the store-read floor
+    %% exists for. Everything above reads store maps, whose Arcus charge is
+    %% additive and so masks an under-charged register read.
+    {CtPK, S5} = deploy(Vsn, counter,          ["0"],     Owner, Env, S4),
+    %% Wraps counter.get() so the step-up's effect shows up as a result.
+    {GcPK, S6} = deploy(Vsn, gas_cap_probe,    [],        Owner, Env, S5),
+    Trees = aect_test_utils:trees(S6),
     {ok, IdData}   = aect_test_utils:encode_call_data(Vsn, src(Vsn, identity), "main_", ["42"]),
     {ok, HashData} = aect_test_utils:encode_call_data(Vsn, src(Vsn, storage_tester), "getHash", []),
     {ok, LookData} = aect_test_utils:encode_call_data(Vsn, src(Vsn, arcus_map_probe), "lookup", ["3"]),
     {ok, MemData}  = aect_test_utils:encode_call_data(Vsn, src(Vsn, arcus_map_probe), "member", ["3"]),
+    {ok, SmData}   = aect_test_utils:encode_call_data(Vsn, src(Vsn, arcus_map_probe), "smalls", []),
+    {ok, GetData}  = aect_test_utils:encode_call_data(Vsn, src(Vsn, counter), "get", []),
+    {ok, TickData} = aect_test_utils:encode_call_data(Vsn, src(Vsn, counter), "tick", []),
+    {ok, BigData}  = aect_test_utils:encode_call_data(Vsn, src(Vsn, arcus_map_probe), "big", []),
+    CtLit = binary_to_list(aeser_api_encoder:encode(contract_pubkey, CtPK)),
+    CapData0 = fun(Cap) ->
+                   {ok, D} = aect_test_utils:encode_call_data(
+                               Vsn, src(Vsn, gas_cap_probe), "capped",
+                               [CtLit, integer_to_list(Cap)]),
+                   D
+               end,
+    CapData = CapData0(?INNER_GAS_CAP),
+    ClrData = CapData0(?GAS_CAP_CLEARS),
     {ok, Spend} = aec_spend_tx:new(#{ sender_id    => aeser_id:create(account, Owner)
                                     , recipient_id => aeser_id:create(account, <<9:256>>)
                                     , amount       => 1
                                     , fee          => 20000 * aec_test_utils:min_gas_price()
-                                    , nonce        => aect_test_utils:next_nonce(Owner, S4)
+                                    , nonce        => aect_test_utils:next_nonce(Owner, S6)
                                     , ttl          => 0
                                     , payload      => <<>> }),
     meck:new(aetx_env, [passthrough]),
     meck:expect(aetx_env, tx_env_and_trees_from_hash, fun(_, _) -> {Env, Trees} end),
-    #{ id_call   => mk_call(Owner, IdPK, IdData,   100000,  S4)
-     , hash_call => mk_call(Owner, StPK, HashData, 5000000, S4)
-     , look_call => mk_call(Owner, MpPK, LookData, 1000000, S4)
-     , mem_call  => mk_call(Owner, MpPK, MemData,  1000000, S4)
+    #{ id_call   => mk_call(Owner, IdPK, IdData,   100000,  S6)
+     , hash_call => mk_call(Owner, StPK, HashData, 5000000, S6)
+     , look_call => mk_call(Owner, MpPK, LookData, 1000000, S6)
+     , mem_call  => mk_call(Owner, MpPK, MemData,  1000000, S6)
+     , sm_call   => mk_call(Owner, MpPK, SmData,   1000000, S6)
+     , big_call  => mk_call(Owner, MpPK, BigData,  1000000, S6)
+     , get_call  => mk_call(Owner, CtPK, GetData,  1000000, S6)
+     , tick_call => mk_call(Owner, CtPK, TickData, 1000000, S6)
+     , cap_call  => mk_call(Owner, GcPK, CapData,  1000000, S6)
+     , clr_call  => mk_call(Owner, GcPK, ClrData,  1000000, S6)
      , spend     => Spend
-     , owner => Owner, st_pk => StPK, hash_data => HashData, state => S4 }.
+     , owner => Owner, st_pk => StPK, hash_data => HashData
+     , ct_pk => CtPK, get_data => GetData, state => S6 }.
 
 equiv_teardown(_) ->
     meck:unload(aetx_env),
@@ -315,8 +366,11 @@ equiv_teardown(_) ->
 
 equiv_checks(F) ->
     #{ id_call := IdCall, hash_call := HashCall, look_call := LookCall
-     , mem_call := MemCall, spend := Spend
-     , owner := Owner, st_pk := StPK, hash_data := HashData, state := St } = F,
+     , mem_call := MemCall, sm_call := SmCall, big_call := BigCall
+     , get_call := GetCall, tick_call := TickCall
+     , cap_call := CapCall, clr_call := ClrCall, spend := Spend
+     , owner := Owner, st_pk := StPK, hash_data := HashData
+     , ct_pk := CtPK, get_data := GetData, state := St } = F,
     %% (1) store-free call + spend: identical result and gas.
     {CIdR, CIdG} = dry_call(IdCall, false),
     {SIdR, SIdG} = dry_call(IdCall, true),
@@ -326,6 +380,13 @@ equiv_checks(F) ->
     {CHR, CHG} = dry_call(HashCall, false),  {SHR, SHG} = dry_call(HashCall, true),
     {CLR, CLG} = dry_call(LookCall, false),  {SLR, SLG} = dry_call(LookCall, true),
     {CMR, CMG} = dry_call(MemCall,  false),  {SMR, SMG} = dry_call(MemCall,  true),
+    {CGR, CGG} = dry_call(GetCall,  false),  {SGR, SGG} = dry_call(GetCall,  true),
+    {CTR, CTG} = dry_call(TickCall, false),  {STR, STG} = dry_call(TickCall, true),
+    {CNR, CNG} = dry_call(SmCall,   false),  {SNR, SNG} = dry_call(SmCall,   true),
+    {CBR, CBG} = dry_call(BigCall,  false),  {SBR, SBG} = dry_call(BigCall,  true),
+    {CPR, _CPG} = dry_call(CapCall, false), {SPR, _SPG} = dry_call(CapCall, true),
+    {CQR, _CQG} = dry_call(ClrCall, false), {SQR, _SQG} = dry_call(ClrCall, true),
+    {RtType, RtGas} = on_chain_call(Owner, CtPK, GetData, SGG, St),
     %% (3) replay profile is NOT re-metered: metering on, replay -> Ceres cost.
     {_, RHG} = dry_call(HashCall, true, [{dry_run_profile, replay}]),
     %% (4) end-to-end DoS: a budget between the Ceres and Arcus cost makes the
@@ -339,6 +400,13 @@ equiv_checks(F) ->
               "  register    getHash(): eq=~p gas ceres=~p arcus=~p (delta=~p)~n"
               "  map-lookup  lookup(3): eq=~p gas ceres=~p arcus=~p~n"
               "  map-member  member(3): eq=~p gas ceres=~p arcus=~p~n"
+              "  small reg   get():     eq=~p gas ceres=~p arcus=~p (delta=~p)~n"
+              "  small r/w   tick():    eq=~p gas ceres=~p arcus=~p (delta=~p)~n"
+              "  two regs    smalls():  eq=~p gas ceres=~p arcus=~p (delta=~p)~n"
+              "  big reg     big():     eq=~p gas ceres=~p arcus=~p (delta=~p)~n"
+              "  gas-capped  capped():  eq=~p tight ceres=~p arcus=~p~n"
+              "                         eq=~p +2000 ceres=~p arcus=~p~n"
+              "  round trip  get()@~p:  on-chain ~p, gas_used=~p~n"
               "  spend:                 eq=~p~n"
               "  replay getHash gas=~p (ceres=~p arcus=~p)~n"
               "  DoS budget=~p: ceres=~p arcus=~p/~p~n",
@@ -346,6 +414,13 @@ equiv_checks(F) ->
                CHR =:= SHR, CHG, SHG, SHG - CHG,
                CLR =:= SLR, CLG, SLG,
                CMR =:= SMR, CMG, SMG,
+               CGR =:= SGR, CGG, SGG, SGG - CGG,
+               CTR =:= STR, CTG, STG, STG - CTG,
+               CNR =:= SNR, CNG, SNG, SNG - CNG,
+               CBR =:= SBR, CBG, SBG, SBG - CBG,
+               CPR =:= SPR, CPR, SPR,
+               CQR =:= SQR, CQR, SQR,
+               SGG, RtType, RtGas,
                CSpend =:= SSpend,
                RHG, CHG, SHG,
                Budget, CTightT, STightT, STightV]),
@@ -356,6 +431,24 @@ equiv_checks(F) ->
     , ?_assertEqual(CHR, SHR), ?_assert(SHG > CHG)
     , ?_assertEqual(CLR, SLR), ?_assert(SLG > CLG)
     , ?_assertEqual(CMR, SMR), ?_assert(SMG > CMG)
+      %% (2b) Equality, not ">": a small map-free register is the one read the
+      %% step-up can price below the activated cost, and with no store-map read
+      %% to pay for there is nothing left to make it higher.
+    , ?_assertEqual(CGR, SGR), ?_assertEqual(CGG, SGG)
+    , ?_assertEqual(CTR, STR), ?_assertEqual(CTG, STG)
+      %% (2c) A floor charged once per call would land ~2000 short of two reads.
+    , ?_assertEqual(CNR, SNR), ?_assertEqual(CNG, SNG)
+      %% (2d) Above the crossover the floor is inert, so this is back to ">".
+      %% With (2b) it brackets the floor from both sides.
+    , ?_assertEqual(CBR, SBR), ?_assert(SBG > CBG)
+      %% (2e) Identical result, not just identical gas. The +2000 pair flipping
+      %% to Some(_) is what keeps the first equality from holding vacuously.
+    , ?_assertEqual(CPR, SPR)
+    , ?_assertEqual(CQR, SQR)
+    , ?_assertNotEqual(CPR, CQR)
+      %% (5) the estimate funds the real on-chain call, exactly.
+    , ?_assertEqual(ok, RtType)
+    , ?_assert(RtGas =< SGG)
       %% (3) replay stays at the block's real Ceres cost (not re-metered)
     , ?_assertEqual(CHG, RHG), ?_assert(RHG < SHG)
       %% (4) end-to-end: ok at Ceres, out_of_gas under forced Arcus
@@ -387,6 +480,18 @@ deploy(Vsn, Name, InitArgs, Owner, Env, S) ->
         aec_trees:apply_txs_on_state_trees([dummy_sign(CreateTx)], aect_test_utils:trees(S),
                                            Env, [strict, dont_verify_signature]),
     {PK, aect_test_utils:set_trees(Trees1, S)}.
+
+%% The chain side of the round trip -- the real apply path, nothing mecked away.
+on_chain_call(Owner, PK, Data, Gas, State) ->
+    Tx = mk_call(Owner, PK, Data, Gas, State),
+    {ok, [_], [], Trees1, _} =
+        aec_trees:apply_txs_on_state_trees([dummy_sign(Tx)], aect_test_utils:trees(State),
+                                           ceres_deploy_env(), [strict, dont_verify_signature]),
+    State1 = aect_test_utils:set_trees(Trees1, State),
+    {_, CallTx} = aetx:specialize_callback(Tx),
+    CallId = aect_call:id(Owner, aect_call_tx:nonce(CallTx), PK),
+    Call = aect_test_utils:get_call(PK, CallId, State1),
+    {aect_call:return_type(Call), aect_call:gas_used(Call)}.
 
 mk_call(Owner, PK, Data, Gas, State) ->
     aect_test_utils:call_tx(Owner, PK,
