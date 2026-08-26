@@ -6,6 +6,8 @@
 
 -define(GENERATOR, aec_block_generator).
 -define(WAIT_MS, 1000).
+%% How long to watch for something that must NOT happen.
+-define(SETTLE_MS, 200).
 
 block_generator_top_change_test_() ->
     {foreach,
@@ -19,6 +21,21 @@ block_generator_top_change_test_() ->
        fun test_does_not_reuse_stale_candidate_after_update_failure/0},
       {"does not publish stale candidate after micro top change",
        fun test_does_not_publish_stale_candidate_after_top_change/0}]}.
+
+block_generator_unchanged_candidate_test_() ->
+    {foreach,
+     fun setup/0,
+     fun teardown/1,
+     [{"keeps the candidate when no new tx applies to it",
+       fun test_keeps_candidate_on_no_update/0},
+      {"keeps the candidate when it is already full",
+       fun test_keeps_candidate_on_block_full/0},
+      {"adds txs cached while an update that changed nothing was running",
+       fun test_drains_cached_txs_after_unchanged_update/0},
+      {"rebuilds after an update error that is not routine",
+       fun test_rebuilds_after_non_routine_update_error/0},
+      {"ignores an unchanged reply from a preempted worker",
+       fun test_ignores_unchanged_reply_from_preempted_worker/0}]}.
 
 setup() ->
     meck:new(aec_events, [non_strict]),
@@ -193,6 +210,192 @@ test_does_not_publish_stale_candidate_after_top_change() ->
     ?assertEqual(Candidate1, current_candidate()),
     ?assertEqual(1, count_candidate_publishes()).
 
+test_keeps_candidate_on_no_update() ->
+    keeps_candidate_on(no_update_to_block_candidate).
+
+test_keeps_candidate_on_block_full() ->
+    keeps_candidate_on(block_is_full).
+
+%% Both errors mean nothing applied, so the candidate must survive.
+keeps_candidate_on(Reason) ->
+    TestPid = self(),
+    InitialTop = <<"top-0">>,
+    Candidate0 = candidate_0,
+    State0 = candidate_state_0,
+    Tx1 = tx_1,
+    Tx2 = tx_2,
+
+    meck:expect(
+      aec_events,
+      publish,
+      fun(candidate_block, new_candidate) ->
+              TestPid ! candidate_published,
+              ok;
+         (_, _) ->
+              ok
+      end),
+    expect_create_once(TestPid, InitialTop, Candidate0, State0),
+    meck:expect(
+      aec_block_micro_candidate,
+      update,
+      fun(Block, Txs, BlockInfo) ->
+              TestPid ! {update_called, Block, Txs, BlockInfo, self()},
+              {error, Reason}
+      end),
+
+    ?GENERATOR:start_generation(),
+    wait_for_create(InitialTop),
+    wait_for_candidate(Candidate0),
+    ?assertEqual(1, count_candidate_publishes()),
+
+    send_tx(Tx1),
+    wait_for_update(Candidate0, [Tx1], State0),
+
+    assert_no_create(?SETTLE_MS),
+    ?assertEqual(Candidate0, current_candidate()),
+    ?assertEqual(0, count_candidate_publishes()),
+
+    %% State0 again: the block_info survived, not just the block.
+    send_tx(Tx2),
+    wait_for_update(Candidate0, [Tx2], State0).
+
+test_drains_cached_txs_after_unchanged_update() ->
+    TestPid = self(),
+    InitialTop = <<"top-0">>,
+    Candidate0 = candidate_0,
+    State0 = candidate_state_0,
+    Tx1 = tx_1,
+    Tx2 = tx_2,
+    Tx3 = tx_3,
+    ContinueRef = make_ref(),
+
+    expect_create_once(TestPid, InitialTop, Candidate0, State0),
+    meck:expect(
+      aec_block_micro_candidate,
+      update,
+      fun(Block, Txs, BlockInfo) when Txs =:= [Tx1] ->
+              TestPid ! {update_called, Block, Txs, BlockInfo, self()},
+              receive
+                  {continue, ContinueRef} -> {error, block_is_full}
+              end;
+         (Block, Txs, BlockInfo) ->
+              TestPid ! {update_called, Block, Txs, BlockInfo, self()},
+              receive after infinity -> ok end
+      end),
+
+    ?GENERATOR:start_generation(),
+    wait_for_create(InitialTop),
+    wait_for_candidate(Candidate0),
+
+    send_tx(Tx1),
+    UpdateWorkerPid = wait_for_update(Candidate0, [Tx1], State0),
+    send_tx(Tx2),   %% both cached while the first update worker is running
+    send_tx(Tx3),
+    UpdateWorkerPid ! {continue, ContinueRef},
+
+    %% One update carrying both, newest first: only the cache can batch them.
+    wait_for_update(Candidate0, [Tx3, Tx2], State0),
+    assert_no_create(?SETTLE_MS).
+
+%% Guards the new clause staying narrow: update/3's spec allows no other error,
+%% so this rebuild is the defensive default rather than a reachable path.
+test_rebuilds_after_non_routine_update_error() ->
+    TestPid = self(),
+    InitialTop = <<"top-0">>,
+    Candidate0 = candidate_0,
+    State0 = candidate_state_0,
+    Tx1 = tx_1,
+
+    meck:expect(
+      aec_block_micro_candidate,
+      create,
+      fun(Top) when Top =:= InitialTop ->
+              TestPid ! {create_called, InitialTop, self()},
+              {ok, Candidate0, State0}
+      end),
+    meck:expect(
+      aec_block_micro_candidate,
+      update,
+      fun(Block, Txs, BlockInfo) ->
+              TestPid ! {update_called, Block, Txs, BlockInfo, self()},
+              {error, simulated_failure}
+      end),
+
+    ?GENERATOR:start_generation(),
+    wait_for_create(InitialTop),
+    wait_for_candidate(Candidate0),
+
+    send_tx(Tx1),
+    wait_for_update(Candidate0, [Tx1], State0),
+
+    %% Rebuilt despite the top not having changed.
+    wait_for_create(InitialTop).
+
+%% preempt_generation kills the update worker, but erlang:exit/2 is asynchronous,
+%% so the worker can still get its reply out. That reply must not be mistaken for
+%% the replacement worker's.
+test_ignores_unchanged_reply_from_preempted_worker() ->
+    TestPid = self(),
+    InitialTop = <<"top-0">>,
+    DeferredTop = <<"top-1">>,
+    Candidate0 = candidate_0,
+    Candidate1 = candidate_1,
+    State0 = candidate_state_0,
+    State1 = candidate_state_1,
+    Tx1 = tx_1,
+    Tx2 = tx_2,
+    ContinueRef = make_ref(),
+    CreateRef = make_ref(),
+
+    meck:expect(
+      aec_block_micro_candidate,
+      create,
+      fun(Top) when Top =:= InitialTop ->
+              TestPid ! {create_called, InitialTop, self()},
+              {ok, Candidate0, State0};
+         (Top) when Top =:= DeferredTop ->
+              TestPid ! {create_called, DeferredTop, self()},
+              receive
+                  {continue, CreateRef} -> {ok, Candidate1, State1}
+              end
+      end),
+    meck:expect(
+      aec_block_micro_candidate,
+      update,
+      fun(Block, Txs, BlockInfo) when Block =:= Candidate0,
+                                      Txs =:= [Tx1],
+                                      BlockInfo =:= State0 ->
+              %% Outlive the preempting kill, standing in for a reply that was
+              %% already on its way when the exit signal was sent.
+              process_flag(trap_exit, true),
+              TestPid ! {update_called, Candidate0, [Tx1], State0, self()},
+              receive
+                  {continue, ContinueRef} -> {error, block_is_full}
+              end;
+         (Block, Txs, BlockInfo) ->
+              TestPid ! {update_called, Block, Txs, BlockInfo, self()},
+              {error, no_update_to_block_candidate}
+      end),
+
+    ?GENERATOR:start_generation(),
+    wait_for_create(InitialTop),
+    wait_for_candidate(Candidate0),
+
+    send_tx(Tx1),
+    UpdateWorkerPid = wait_for_update(Candidate0, [Tx1], State0),
+
+    defer_micro_top(DeferredTop),
+    CreateWorkerPid = wait_for_create(DeferredTop),
+    release_and_await_exit(UpdateWorkerPid, {continue, ContinueRef}),
+
+    %% Had the stale reply been accepted it would have cleared the worker slot,
+    %% leaving the create worker's own result to be dropped as stale in turn.
+    CreateWorkerPid ! {continue, CreateRef},
+    wait_for_candidate(Candidate1),
+
+    send_tx(Tx2),
+    wait_for_update(Candidate1, [Tx2], State1).
+
 wait_for_create(ExpectedTop) ->
     receive
         {create_called, ExpectedTop, WorkerPid} ->
@@ -267,6 +470,43 @@ assert_no_stale_update_after_fresh_progress(StaleCandidate, Tx, ChecksLeft) ->
             ?assert(false)
     after 20 ->
         assert_no_stale_update_after_fresh_progress(StaleCandidate, Tx, ChecksLeft - 1)
+    end.
+
+%% Answers Candidate once and a different one after that, so an unwanted rebuild
+%% shows up in every later assertion, not only in assert_no_create/1.
+expect_create_once(TestPid, Top, Candidate, State) ->
+    Calls = counters:new(1, []),
+    meck:expect(
+      aec_block_micro_candidate,
+      create,
+      fun(T) when T =:= Top ->
+              TestPid ! {create_called, T, self()},
+              case counters:get(Calls, 1) of
+                  0 ->
+                      counters:add(Calls, 1, 1),
+                      {ok, Candidate, State};
+                  _ ->
+                      {ok, rebuilt_candidate, rebuilt_state}
+              end
+      end).
+
+%% A worker's reply is queued by the time it exits, so waiting for the exit puts
+%% that reply ahead of whatever the test sends next.
+release_and_await_exit(WorkerPid, Msg) ->
+    Mon = erlang:monitor(process, WorkerPid),
+    WorkerPid ! Msg,
+    receive
+        {'DOWN', Mon, process, WorkerPid, _Reason} -> ok
+    after ?WAIT_MS ->
+        erlang:error({timeout, worker_did_not_exit, WorkerPid})
+    end.
+
+assert_no_create(TimeoutMs) ->
+    receive
+        {create_called, Top, _WorkerPid} ->
+            erlang:error({unexpected_rebuild, Top})
+    after TimeoutMs ->
+        ok
     end.
 
 count_candidate_publishes() ->
