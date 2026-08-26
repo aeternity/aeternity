@@ -185,13 +185,14 @@ do_stop_generation(S = #state{ generating = true }) ->
 do_stop_generation(S) ->
     S.
 
-%% When a new transaction arrives, either cache it until the current worker
-%% has finished, or start a new worker to add it right away.
-add_new_tx(S = #state{ worker = Worker }, Tx) ->
-    case Worker of
-        undefined      -> start_worker_txs(S, [Tx]);
-        {_WPid, _WRef} -> S#state{ new_txs = [Tx | S#state.new_txs] }
-    end.
+add_new_tx(S = #state{ worker = undefined, candidate = undefined }, _Tx) ->
+    %% Nothing to extend, and the rebuild this is waiting on walks the pool itself
+    S;
+add_new_tx(S = #state{ worker = undefined }, Tx) ->
+    start_worker_txs(S, [Tx]);
+add_new_tx(S, Tx) ->
+    %% Only has to not lose it: the worker in flight cannot pick it up
+    S#state{ new_txs = [Tx | S#state.new_txs] }.
 
 %% Terminate current worker and start a new one
 %% (used when the top has changed)

@@ -37,7 +37,18 @@ block_generator_unchanged_candidate_test_() ->
       {"ignores an unchanged reply from a preempted worker",
        fun test_ignores_unchanged_reply_from_preempted_worker/0}]}.
 
+block_generator_no_candidate_test_() ->
+    {foreach,
+     fun setup/0,
+     fun teardown/1,
+     [{"survives a new tx arriving with no candidate to extend",
+       fun test_caches_tx_with_no_top_block/0}]}.
+
 setup() ->
+    %% start_link/0 below links the generator to this process, and eunit cleanup does
+    %% not run when a test process is killed by an exit signal
+    process_flag(trap_exit, true),
+
     meck:new(aec_events, [non_strict]),
     meck:expect(aec_events, subscribe, fun(_) -> ok end),
     meck:expect(aec_events, publish, fun(_, _) -> ok end),
@@ -395,6 +406,27 @@ test_ignores_unchanged_reply_from_preempted_worker() ->
 
     send_tx(Tx2),
     wait_for_update(Candidate1, [Tx2], State1).
+
+%% start_worker_txs/2 has no clause for an undefined candidate, and the gen_server
+%% dying takes aec_conductor with it under one_for_all. With no top block no worker is
+%% ever started, so this is the one state where a tx finds the slot idle and nothing
+%% to extend.
+test_caches_tx_with_no_top_block() ->
+    meck:expect(aec_chain, top_block, fun() -> undefined end),
+    GenPid = whereis(?GENERATOR),
+
+    ?GENERATOR:start_generation(),
+    [ send_tx({tx, N}) || N <- lists:seq(1, 5) ],
+
+    %% A plain call, so a dead server fails here rather than through get_candidate/0,
+    %% which answers no_candidate either way
+    ?assertEqual(running, ?GENERATOR:get_generation_state()),
+    ?assertEqual(GenPid, whereis(?GENERATOR)),
+    ?assertEqual({error, no_candidate}, ?GENERATOR:get_candidate()),
+
+    %% Nothing drains a cache built here, so no field may still be holding the txs
+    Fields = tuple_to_list(sys:get_state(?GENERATOR)),
+    ?assertEqual([], [ F || F <- Fields, is_list(F), F =/= [] ]).
 
 wait_for_create(ExpectedTop) ->
     receive
