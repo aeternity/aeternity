@@ -1508,7 +1508,7 @@
                             "default" : 256000000
                         },
                         "store_read_gas_metering" : {
-                            "description" : "Meter FATE contract-storage reads in dry-run at the size-proportional gas cost.",
+                            "description" : "Meter FATE contract-storage reads in dry-run at the size-proportional (Arcus) gas cost, each repriced register read floored at the currently activated protocol's charge so the estimate is never below the on-chain cost.",
                             "type" : "boolean",
                             "default" : true
                         }

@@ -853,7 +853,11 @@ lookup_in_store(N, ES) ->
                 {ok, Val, Stores1, _Bytes, GasLeft1} ->
                     ES2 = aefa_engine_state:set_gas(GasLeft1, ES1),
                     ES3 = aefa_engine_state:set_stores(Stores1, ES2),
-                    {Val, ES3};
+                    %% Only site where the Arcus charge replaces a pre-Arcus one
+                    %% instead of adding to it, hence the only one needing a floor.
+                    ES4 = aefa_engine_state:spend_gas_for_store_read_floor(
+                            GasLeft - GasLeft1, ES3),
+                    {Val, ES4};
                 {error, out_of_gas} ->
                     abort(out_of_gas, ES1);
                 error ->

@@ -205,9 +205,10 @@ http:
         max_heap_words: 256000000
 ```
 
-`store_read_gas_metering` (default `true`) meters FATE contract-storage reads at the size-proportional Arcus (v7) gas cost, regardless of which protocol is currently activated on the chain. It affects only the gas amounts reported back - never transaction validity, ABI/VM version, or the response schema - and nothing is committed either way. Two consequences worth knowing:
+`store_read_gas_metering` (default `true`) meters FATE contract-storage reads at the size-proportional Arcus (v7) gas cost, regardless of which protocol is currently activated on the chain. It affects only the gas amounts reported back - never transaction validity, ABI/VM version, or the response schema - and nothing is committed either way. Three consequences worth knowing:
 
-* Estimates are forward-safe: a call estimated today will not become under-funded once Arcus activates. Until then the estimate can legitimately read higher than the same call currently costs on chain.
+* Estimates are safe in both directions. Forward: a call estimated today will not become under-funded once Arcus activates. Backward: a store *register* read is the one read whose Arcus charge replaces a pre-Arcus charge rather than adding to it, and it is floored at what the activated protocol charges, so the repricing can never pull an estimate *below* what the same call costs on chain today.
+* The gap the other way is bounded by one flat pre-Arcus charge (2000 gas) per register read. Unused gas is refunded, so it costs a caller headroom and nothing more - except inside a `protected` remote call given a gas cap, where the extra charge can turn a returned value into `None`. Estimate those with the setting `false` if the inner call's outcome matters.
 * Reads of large stores are bounded by the dry-run gas ceiling instead of running unpriced, which is what keeps a read-only call from doing unbounded deserialization work.
 
 Historical replay (Rosetta/indexer balance reconstruction) and mempool includability checks always answer for the real activated protocol and are unaffected by this setting. Set it to `false` to report the currently activated protocol's flat charge instead.

@@ -1,0 +1,9 @@
+// Protected, gas-capped remote read for the Arcus dry-run gas tripwire. With a
+// cap between the repriced and the flat cost of the callee's register read, the
+// two meterings differ in the RESULT rather than only in the gas reported.
+contract interface SmallStore =
+    entrypoint get : () => int
+
+contract GasCapProbe =
+    entrypoint capped(c : SmallStore, cap : int) : option(int) =
+        c.get(protected = true, gas = cap)

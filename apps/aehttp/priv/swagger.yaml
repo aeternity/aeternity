@@ -422,7 +422,7 @@ paths:
         - external
         - dry-run
       operationId: 'ProtectedDryRunTxs'
-      description: 'Dry-run transactions on top of a given block. Supports all TXs except GAMetaTx, PayingForTx and OffchainTx. Gas defaults to 1000000 when not set on a call request; total gas per request is capped by a node-configured limit. FATE contract-storage reads are metered at a size-proportional gas cost, so reported gas is an estimate of the on-chain cost, not an exact figure.'
+      description: 'Dry-run transactions on top of a given block. Supports all TXs except GAMetaTx, PayingForTx and OffchainTx. Gas defaults to 1000000 when not set on a call request; total gas per request is capped by a node-configured limit. FATE contract-storage reads are metered at a size-proportional gas cost, so reported gas is an estimate of the on-chain cost, not an exact figure. Reported gas is never below what the same call costs on chain at the currently activated protocol, because each repriced storage register read is floored at that charge.'
       consumes:
         - application/json
       produces:
@@ -2026,7 +2026,7 @@ paths:
         - internal
         - debug
       operationId: 'DryRunTxs'
-      description: 'Dry-run transactions on top of a given block. Supports all TXs except GAMetaTx, PayingForTx and OffchainTx. FATE contract-storage reads are metered at the size-proportional (Arcus) gas cost by default.'
+      description: 'Dry-run transactions on top of a given block. Supports all TXs except GAMetaTx, PayingForTx and OffchainTx. FATE contract-storage reads are metered at the size-proportional (Arcus) gas cost by default. Each repriced storage register read is floored at the currently activated protocol charge, so reported gas is never below the on-chain cost.'
       consumes:
         - application/json
       produces:

@@ -36,6 +36,7 @@
         , ga_tx/1
         , height/1
         , key_hash/1
+        , metering_floor_version/1
         , payer/1
         , signed_tx/1
         , time_in_msecs/1
@@ -54,6 +55,7 @@
         , set_ga_tx/2
         , set_ga_tx_hash/2
         , set_height/2
+        , set_metering_floor_version/2
         , set_payer/2
         , set_signed_tx/2
         , tx_event/3
@@ -89,6 +91,7 @@
              , dry_run = false       :: boolean()
              , height                :: aec_blocks:height()
              , key_hash              :: aec_blocks:block_header_hash()
+             , metering_floor_version = undefined :: undefined | non_neg_integer()
              , signed_tx             :: wrapped_tx()
              , time                  :: non_neg_integer()
              , events = no_events()  :: events()
@@ -205,6 +208,16 @@ consensus_version(#env{consensus_version = X}) -> X.
 
 -spec set_consensus_version(env(), aec_hard_forks:protocol_vsn()) -> env().
 set_consensus_version(Env, X) -> Env#env{consensus_version = X}.
+
+%%------
+
+%% The protocol the chain is really on, recorded only when dry-run steps
+%% consensus_version forward to meter at a not-yet-activated cost.
+-spec metering_floor_version(env()) -> undefined | non_neg_integer().
+metering_floor_version(#env{metering_floor_version = X}) -> X.
+
+-spec set_metering_floor_version(env(), aec_hard_forks:protocol_vsn()) -> env().
+set_metering_floor_version(Env, X) -> Env#env{metering_floor_version = X}.
 
 %%------
 

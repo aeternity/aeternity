@@ -52,6 +52,47 @@ store_read_repricing_test() ->
     ?assert(ArcusAtMax > CeresAtMax * 10).
 
 %%%===================================================================
+%%% Store-register lookup gas under a dry-run step-up (Ceres -> Arcus)
+%%%
+%%% Nothing else pins the argument lookup_in_store/2 hands the floor:
+%%% aefa_engine_state_test feeds it synthetic numbers, and aec_dry_run_tests
+%%% runs only on Ceres+ lanes and only below the ~190-byte crossover.
+%%%===================================================================
+
+%% One register read under a Ceres->Arcus step-up: max(Arcus, flat 2000), per read.
+store_read_floor_sweep_test() ->
+    Rows = [ begin
+                 Value = aeb_fate_data:make_string(binary:copy(<<$a>>, Size)),
+                 {Size, measure_lookup_gas(?ARCUS_PROTOCOL_VSN, Value),
+                        measure_floored_lookup_gas(Value)}
+             end || Size <- ?SIZES ],
+    [ ?assertEqual(max(2000, GasArcus), GasFloored)
+      || {_Size, GasArcus, GasFloored} <- Rows ],
+    %% Never below what the same read costs on chain at Ceres today.
+    [ ?assert(GasFloored >= 2000) || {_Size, _GasArcus, GasFloored} <- Rows ],
+    %% Straddles the crossover, so both branches above are exercised.
+    ?assert(lists:any(fun({_, A, F}) -> F > A end, Rows)),
+    ?assert(lists:any(fun({_, A, F}) -> F =:= A andalso A > 2000 end, Rows)).
+
+%% A repeat read is a cache hit, free under Ceres, so the floor must leave it
+%% free too -- a floor charged per lookup would double this call's cost.
+store_read_floor_not_charged_on_cache_hit_test() ->
+    Value = aeb_fate_data:make_string(binary:copy(<<$a>>, 10)),
+    API1 = seed_on_chain_store(?ARCUS_PROTOCOL_VSN, Value, ?CERES_PROTOCOL_VSN),
+    ES0 = fresh_reader_engine_state(?ARCUS_PROTOCOL_VSN, API1),
+    {Val, ES1} = aefa_fate:lookup_var({var, -?STORE_POS}, ES0),
+    {Val, ES2} = aefa_fate:lookup_var({var, -?STORE_POS}, ES1),  %% same value back
+    ?assertEqual(2000, aefa_engine_state:gas(ES0) - aefa_engine_state:gas(ES1)),
+    ?assertEqual(0,    aefa_engine_state:gas(ES1) - aefa_engine_state:gas(ES2)).
+
+%% Same read as measure_lookup_gas/2, through a stepped-up dry-run env.
+measure_floored_lookup_gas(Value) ->
+    API1 = seed_on_chain_store(?ARCUS_PROTOCOL_VSN, Value, ?CERES_PROTOCOL_VSN),
+    ES0 = fresh_reader_engine_state(?ARCUS_PROTOCOL_VSN, API1),
+    {_Val, ES1} = aefa_fate:lookup_var({var, -?STORE_POS}, ES0),
+    aefa_engine_state:gas(ES0) - aefa_engine_state:gas(ES1).
+
+%%%===================================================================
 %%% Store-map lookup gas, Ceres (flat 5000) vs Arcus (floor + per-byte)
 %%%===================================================================
 
@@ -106,7 +147,10 @@ measure_lookup_gas(Protocol, Value) ->
     GasBefore - GasAfter.
 
 seed_on_chain_store(Protocol, Value) ->
-    ChainApi = fresh_chain_api(Protocol),
+    seed_on_chain_store(Protocol, Value, _FloorVsn = undefined).
+
+seed_on_chain_store(Protocol, Value, FloorVsn) ->
+    ChainApi = fresh_chain_api(Protocol, FloorVsn),
     Stores0 = aefa_stores:new(),
     Stores1 = aefa_stores:put_contract_store(?CONTRACT_PUBKEY,
                                               aefa_stores:initial_contract_store(),
@@ -170,8 +214,17 @@ fresh_reader_engine_state(Protocol, API1) ->
     ES1.
 
 fresh_chain_api(Protocol) ->
+    fresh_chain_api(Protocol, _FloorVsn = undefined).
+
+%% FloorVsn =/= undefined builds the env aec_dry_run hands FATE on a step-up.
+fresh_chain_api(Protocol, FloorVsn) ->
     Trees = trees_with_one_contract(),
-    TxEnv = aetx_env:tx_env(_Height = 1, Protocol),
+    TxEnv0 = aetx_env:tx_env(_Height = 1, Protocol),
+    TxEnv = case FloorVsn of
+                undefined -> TxEnv0;
+                _         -> aetx_env:set_metering_floor_version(
+                               aetx_env:set_dry_run(TxEnv0, true), FloorVsn)
+            end,
     aefa_chain_api:new(#{ gas_price => 1
                          , fee        => 0
                          , origin     => ?CALLER_PUBKEY

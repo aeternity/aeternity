@@ -7,6 +7,8 @@
   keep replaying under the frozen pre-Arcus store logic.
   Note that dry-run gas estimates are metered at the new Arcus cost right away
   (see the dry-run release note), so an estimate can legitimately be higher than
-  what the same call currently costs on chain. Contracts that read large values
-  from their store - in particular via large store maps - should be re-estimated
-  before an Arcus height is set.
+  what the same call currently costs on chain - but never lower, since each
+  repriced store register read is floored at the activated protocol's charge, and
+  every other store read is only ever charged more. Contracts that read large
+  values from their store - in particular via large store maps - should be
+  re-estimated before an Arcus height is set.
