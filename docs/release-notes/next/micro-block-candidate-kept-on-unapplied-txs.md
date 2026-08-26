@@ -5,3 +5,6 @@
   answered `no_candidate` and the whole mempool was walked again to build a
   replacement, which any such transaction could trigger at will and without ever
   paying a fee. Genuine build failures and worker crashes still rebuild.
+  One side effect: the dropped rebuild was also what reported such a transaction to
+  the mempool as failed, so it is now counted once per rebuild rather than once per
+  arrival and takes longer to reach the limit at which the pool drops it.
