@@ -120,6 +120,9 @@ handle_cast({worker_done, Pid, {candidate, Candidate, CandidateState}},
     State2 = State1#state{ candidate = Candidate
                          , candidate_state = CandidateState },
     {noreply, maybe_start_worker_txs(State2)};
+handle_cast({worker_done, Pid, {unchanged, Reason}}, State = #state{ worker = {Pid, _} }) ->
+    lager:debug("Microblock candidate unchanged: ~p", [Reason]),
+    {noreply, maybe_start_worker_txs(finish_worker(State))};
 handle_cast({worker_done, Pid, {failed, Reason}}, State = #state{ worker = {Pid, _}}) ->
     State1 = worker_failed(Reason, State),
     {noreply, State1};
@@ -204,9 +207,7 @@ stop_worker(S = #state{ worker = {WPid, WRef} }) ->
 stop_worker(S) ->
     S.
 
-%% If the worker has failed, we must ensure that the candidate field is not
-%% left as 'undefined'; we must try to build a fresh block, and ignore
-%% anything cached in the new_tx field.
+%% The candidate may be gone, so start over and drop new_txs.
 worker_failed(Reason, S) ->
     lager:debug("Microblock candidate worker failed: ~p", [Reason]),
     S1 = finish_worker(S),
@@ -270,6 +271,11 @@ update_block_candidate(Block, BlockInfo, Txs) ->
     case aec_block_micro_candidate:update(Block, Txs, BlockInfo) of
         {ok, NewBlock, NewBlockInfo} ->
             new_candidate(NewBlock, NewBlockInfo);
+        {error, Reason} when Reason =:= block_is_full;
+                             Reason =:= no_update_to_block_candidate ->
+            %% Routine per update/3's spec: nothing applied, so the candidate is
+            %% intact - a rebuild would let any unappliable tx re-walk the pool.
+            unchanged_candidate(Reason);
         {error, Reason} ->
             failed_attempt(Reason)
     end.
@@ -277,6 +283,10 @@ update_block_candidate(Block, BlockInfo, Txs) ->
 %% Report error and terminate worker
 failed_attempt(Reason) ->
     gen_server:cast(?MODULE, {worker_done, self(), {failed, Reason}}).
+
+%% Report that the candidate could not be extended, and terminate worker
+unchanged_candidate(Reason) ->
+    gen_server:cast(?MODULE, {worker_done, self(), {unchanged, Reason}}).
 
 %% Report new candidate microblock and terminate worker
 new_candidate(NewBlock, NewBlockInfo) ->
