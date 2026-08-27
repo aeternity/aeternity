@@ -10,6 +10,9 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+%% logger handler callback, see config_error_reported_before_lager_starts_test_
+-export([log/2]).
+
 schema_test_() ->
     {setup,
      fun() -> setup() end,
@@ -535,5 +538,50 @@ reporting_utilization_override_settable_by_os_env_test_() ->
           #{<<"http">> := #{<<"gas_price">> := GasPrice}} = Res,
           ?assertEqual(71, maps:get(<<"reporting_utilization_override">>, GasPrice))
       end}}.
+
+%%%=============================================================================
+%%% Config errors reported by the hooks that run before lager
+%%%=============================================================================
+
+-define(CAPTURE, ?MODULE).
+
+%% error_format/3 must not lose the message when hooks 100-101 run before lager.
+config_error_reported_before_lager_starts_test_() ->
+    {setup,
+     fun() ->
+             SavedFork = setup(),
+             LagerUp = lists:keymember(lager, 1, application:which_applications()),
+             _ = application:stop(lager),
+             %% A table, not messages: eunit runs each test in a process of
+             %% its own, which the handler has no way of knowing about.
+             ?CAPTURE = ets:new(?CAPTURE, [named_table, public, duplicate_bag]),
+             ok = logger:add_handler(?CAPTURE, ?MODULE, #{level => error}),
+             {SavedFork, LagerUp}
+     end,
+     fun({SavedFork, LagerUp}) ->
+             ok = logger:remove_handler(?CAPTURE),
+             true = ets:delete(?CAPTURE),
+             case LagerUp of true -> ok = lager:start(); false -> ok end,
+             teardown(SavedFork)
+     end,
+     {"a validation failure names the offending setting with lager down",
+      fun() ->
+              Bad = #{<<"mining">> =>
+                          #{<<"expected_mine_rate">> => <<"not-an-integer">>}},
+              ?assertError(validation_failed,
+                           aeu_env:validate(Bad, config_error_test,
+                                            aeu_env:schema_filename(), report)),
+              [Reported] = captured(),
+              ?assertNotEqual(nomatch, string:find(Reported, "expected_mine_rate")),
+              ?assertNotEqual(nomatch, string:find(Reported, "not-an-integer")),
+              ?assertNotEqual(nomatch, string:find(Reported, "Wrong type"))
+      end}}.
+
+log(Event, _Config) ->
+    ets:insert(?CAPTURE, {msg, logger_formatter:format(Event, #{template => [msg]})}),
+    ok.
+
+captured() ->
+    [lists:flatten(Msg) || {msg, Msg} <- ets:tab2list(?CAPTURE)].
 
 -endif.

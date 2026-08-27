@@ -349,19 +349,18 @@ the temporary directory that was created, do:
   - The `aeutils.app.src` file configures a hook for the `setup` app,
     making it call `aeu_logging_env:adjust_log_levels()` when `setup`
     starts. (Note that `aeutils` configuration must thus be loaded before
-    `setup` runs, which it will be when running from a boot script.) This
-    will also call `aeu_logging_env:expand_lager_log_root()` to ensure
-    that `lager` has its `log_root` configuration set, using
-    `setup:log_dir()` as the default. Furthermore it rewrites the log
-    root setting to be an absolute path, to ensure that the logging is
+    `setup` runs, which it will be when running from a boot script.) It
+    sets `lager`'s `log_root` configuration from `setup:log_dir()`, and
+    rewrites it to be an absolute path, to ensure that the logging is
     not affected by changes to the current working directory of the
     Erlang VM during execution.
+  - The same hook then starts `lager`, at setup phase 102, so that the
+    hooks after it can log. Since `setup` and `lager` don't know about
+    each other's existence, their `.app` files do not specify any
+    dependency between them; their relative order in the `relx`
+    specification only keeps `lager` from starting before `setup`.
   - As soon as lager starts, it will create the log directory and all log
     files using its current configuration.
-  - Since `setup` and `lager` don't know about each other's existence,
-    their `.app` files do not specify any dependency between them. Their
-    relative order in the `relx` specification thus decides their actual
-    order in the boot script.
   - The `lager` configuration in `sys.config` sets up both a handler that
     writes to the console, and a handler that writes to the
     `aeternity.log` logfile. It also configures additional logging sinks,

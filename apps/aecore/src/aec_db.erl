@@ -1624,8 +1624,8 @@ can_enable_direct_access() ->
 
 check_db() ->
     try
-        %% We need to start lager here in case something goes wrong - otherwise instead of nice
-        %% debugging logs we will get an erl_crash.dump with a truncated stack trace.
+        %% A node has lager from hook 102; eunit calls check_db/0 directly, and
+        %% without logs a failure here is only a truncated erl_crash.dump.
         lager:start(),
         Mode = backend_mode(),
         SchemaExists = pre_existing_schema(Mode),

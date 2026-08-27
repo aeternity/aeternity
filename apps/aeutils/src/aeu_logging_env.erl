@@ -4,10 +4,13 @@
 
 adjust_log_levels() ->
     set_lager_log_root(),
-    aeu_env:check_env(
-      aeutils,
-      [{[<<"logging">>, <<"hwm">>]     , fun set_hwm/1},
-       {[<<"logging">>, <<"level">>]   , fun set_level/1}]).
+    Res = aeu_env:check_env(
+            aeutils,
+            [{[<<"logging">>, <<"hwm">>]     , fun set_hwm/1},
+             {[<<"logging">>, <<"level">>]   , fun set_level/1}]),
+    %% Earliest safe point: log root, hwm and levels are all settled above.
+    ok = lager:start(),
+    Res.
 
 %% See https://github.com/erlang-lager/lager/issues/557
 %% We want to prevent the log directory from moving during runtime. One
