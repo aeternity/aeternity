@@ -369,8 +369,10 @@ find_term(StorePos, #cache_entry{terms = Terms} = E, Gas) ->
 %% Charge-before-work: Bytes is charged before deserializing, so an
 %% under-provisioned read aborts without paying the deserialize cost. A
 %% miss is left uncharged here: a register miss always aborts immediately
-%% in the caller anyway; store_map_lookup_/5 and store_map_member_/5 charge
-%% their own miss explicitly since a miss there is non-aborting.
+%% in the caller anyway. Every caller whose miss is non-aborting charges it
+%% explicitly instead -- store_map_lookup_/5 and store_map_member_/5 at
+%% execution time, compute_reuse_only_refcounts/5 and
+%% compute_copy_refcounts/5 at finalize time.
 find_in_store(Key, Store, Gas) ->
     case aect_contracts_store:get_w_cache(Key, Store) of
         {<<>>, _Store1} ->
@@ -652,8 +654,7 @@ perform_store_update(_OldMeta, {push_term, StorePos, FateVal}, {Meta, Store}, Ga
 perform_store_update(OldMeta, {copy_map, MapId, Map}, S, GasLeft, _GcCache) ->
     copy_map(OldMeta, MapId, Map, S, GasLeft);
 perform_store_update(_OldMeta, {update_map, MapId, Map}, S, GasLeft, _GcCache) ->
-    {Meta1, Bytes, Store1} = update_map(MapId, Map, S),
-    {Meta1, Bytes, Store1, GasLeft};
+    update_map(MapId, Map, S, GasLeft);
 perform_store_update(_OldMeta, {gc_map, MapId}, S, GasLeft, GcCache) ->
     {Meta1, Bytes, Store1} = gc_map(MapId, S, GcCache),
     {Meta1, Bytes, Store1, GasLeft}.
@@ -703,25 +704,28 @@ copy_map(OldMeta, MapId, ?FATE_STORE_MAP(Cache, OldId), {Meta, Store}, GasLeft) 
 
 %% In-place update of an existing store map. This happens, for instance, when
 %% you update a map in the state throwing away the old copy of the it.
-update_map(MapId, ?FATE_STORE_MAP(Cache, OldId), {Meta, Store}) ->
+update_map(MapId, ?FATE_STORE_MAP(Cache, OldId), {Meta, Store}, GasLeft) ->
     ?METADATA(_, RefCount, _) = get_map_meta(MapId, Meta), %% Precomputed
     ?METADATA(RawId, _RefCount, OldSize) = get_map_meta(OldId, Meta),
     NewData = cache_to_bin_data(Cache),
-    Size    = OldSize + size_delta(RawId, Store, NewData),
+    {Delta, GasLeft1} = size_delta(RawId, Store, NewData, GasLeft),
+    Size    = OldSize + Delta,
     {Store1, Bytes} = write_bin_data(RawId, NewData, Store),
     Meta1   = put_map_meta(MapId, ?METADATA(RawId, RefCount, Size),
                            remove_map_meta(OldId, Meta)),
 
     %% We also need to update the refcounts for nested maps. We already added
     %% refcounts for maps in the Cache, now we have to subtract refcounts for
-    %% entries overwritten by the cache.
-    %% NOTE: size_delta/3's per-key membership check below is still unmetered.
-    RefCounts = lists:foldl(fun({Key, _}, Count) ->
-                                aeb_fate_maps:refcount_union(refcount_delta(Key, false, Store), %% old store
-                                                             Count)
-                            end, aeb_fate_maps:refcount_zero(), NewData),
+    %% entries overwritten by the cache. Both this fold's lookup and
+    %% size_delta/4's membership check above are real single-key store reads,
+    %% so both are charged on the same formula as every other store read.
+    {RefCounts, GasLeft2} =
+        lists:foldl(fun({Key, _}, {Count, Gas}) ->
+                        {D, Gas1} = refcount_delta(Key, false, Store, Gas), %% old store
+                        {aeb_fate_maps:refcount_union(D, Count), Gas1}
+                    end, {aeb_fate_maps:refcount_zero(), GasLeft1}, NewData),
     Meta2     = update_refcounts(RefCounts, Meta1),
-    {Meta2, Bytes, Store1}.
+    {Meta2, Bytes, Store1, GasLeft2}.
 
 gc_map(RawId, {Meta, Store}, GcCache) ->
     %% Reuse the subtree already fetched (and charged) by gc_refcounts/4
@@ -764,27 +768,37 @@ write_bin_data(RawId, BinData, Store) ->
 %% Compute the change in size updating an old map with new entries.
 -spec size_delta(#{binary() => binary()}, bin_data()) -> integer().
 size_delta(OldMap, NewData) ->
-    size_delta_(fun(K) -> maps:is_key(K, OldMap) end, NewData).
+    %% Membership comes from a subtree the caller has already read and paid
+    %% for, so there is no gas to thread through here.
+    {Delta, unmetered} =
+        size_delta_(fun(K, Gas) -> {maps:is_key(K, OldMap), Gas} end, NewData, unmetered),
+    Delta.
 
 %% Same as size_delta/2 but instead of a binary map we get a raw_id() and the
-%% store.
--spec size_delta(raw_id(), aect_contracts_store:store(), bin_data()) -> integer().
-size_delta(RawId, Store, NewData) ->
-    size_delta_(fun(K) -> <<>> /= aect_contracts_store:get(map_raw_key(RawId, K), Store) end,
-                NewData).
+%% store, so each key costs a real single-key store read rather than a lookup
+%% in an already-read subtree. Charged like every other store read: the
+%% value's bytes on a hit, the read_gas_cost/1 floor on a miss -- a miss reads
+%% back <<>>, so one expression covers both.
+-spec size_delta(raw_id(), aect_contracts_store:store(), bin_data(), non_neg_integer()) ->
+        {integer(), non_neg_integer()}.
+size_delta(RawId, Store, NewData, GasLeft) ->
+    size_delta_(fun(K, Gas) ->
+                    Bin = aect_contracts_store:get(map_raw_key(RawId, K), Store),
+                    {<<>> /= Bin, spend_read_gas(Gas, byte_size(Bin))}
+                end, NewData, GasLeft).
 
-size_delta_(IsKey, NewData) ->
-    Delta = fun({K, ?FATE_MAP_TOMBSTONE}, N) ->
-                 case IsKey(K) of
-                     true  -> N - 1;
-                     false -> N
+size_delta_(IsKey, NewData, Gas0) ->
+    Delta = fun({K, ?FATE_MAP_TOMBSTONE}, {N, Gas}) ->
+                 case IsKey(K, Gas) of
+                     {true,  Gas1} -> {N - 1, Gas1};
+                     {false, Gas1} -> {N, Gas1}
                  end;
-               ({K, _}, N) ->
-                 case IsKey(K) of
-                     true  -> N;
-                     false -> N + 1
+               ({K, _}, {N, Gas}) ->
+                 case IsKey(K, Gas) of
+                     {true,  Gas1} -> {N, Gas1};
+                     {false, Gas1} -> {N + 1, Gas1}
                  end end,
-    lists:foldl(Delta, 0, NewData).
+    lists:foldl(Delta, {0, Gas0}, NewData).
 
 %% -- Reference counting -----------------------------------------------------
 
@@ -822,8 +836,9 @@ map_refcounts(_Meta, ?FATE_STORE_MAP(Cache, _Id), _Store) ->
 
 %% Only compute refcount adjustments for reused maps (lightweight individual lookups).
 %% Copied maps contribute zero adjustments — their subtrees are NOT read.
-%% Acc is GasLeft: the find_in_store/3 lookups below are charged and can
-%% signal out_of_gas.
+%% Acc is GasLeft: the find_in_store/3 lookups below are charged -- a hit for
+%% its bytes, a non-aborting miss for the read floor -- and can signal
+%% out_of_gas.
 compute_reuse_only_refcounts(Meta, Reuse, Maps, Store, GasLeft) ->
     maps:fold(fun(MapId, ?FATE_STORE_MAP(Cache, Id), {Count, Gas}) ->
                       case maps:get(Id, Reuse, no_reuse) of
@@ -834,7 +849,7 @@ compute_reuse_only_refcounts(Meta, Reuse, Maps, Store, GasLeft) ->
                                     fun(Key, {Acc, GasA}) ->
                                             case find_in_store(map_data_key(RawId, Key), Store, GasA) of
                                                 {error, out_of_gas}         -> throw(out_of_gas);
-                                                error                       -> {Acc, GasA};
+                                                error                       -> {Acc, spend_read_gas(GasA, 0)};
                                                 {ok, Val, _, _Bytes, GasA1} -> {[Val | Acc], GasA1}
                                             end
                                     end, {[], Gas}, maps:keys(Cache)),
@@ -849,7 +864,8 @@ compute_reuse_only_refcounts(Meta, Reuse, Maps, Store, GasLeft) ->
 %% We need to increase the refcounts of maps contained in maps that are being
 %% copied. Acc is {SubtreeCache, GasLeft}: the copy branch's cache-miss case
 %% charges a full subtree read before its values are deserialized; the
-%% reuse branch's per-key lookups are charged too and can signal out_of_gas.
+%% reuse branch's per-key lookups are charged too -- hit or miss -- and can
+%% signal out_of_gas.
 compute_copy_refcounts(Meta, Reuse, Maps, Store, {SubtreeCache, GasLeft}) ->
     maps:fold(fun(MapId, ?FATE_STORE_MAP(Cache, Id), {Count, {SC, Gas}}) ->
                       case maps:get(Id, Reuse, no_reuse) of
@@ -860,7 +876,7 @@ compute_copy_refcounts(Meta, Reuse, Maps, Store, {SubtreeCache, GasLeft}) ->
                                     fun(Key, {Acc, GasA}) ->
                                             case find_in_store(map_data_key(RawId, Key), Store, GasA) of
                                                 {error, out_of_gas}         -> throw(out_of_gas);
-                                                error                       -> {Acc, GasA};
+                                                error                       -> {Acc, spend_read_gas(GasA, 0)};
                                                 {ok, Val, _, _Bytes, GasA1} -> {[Val | Acc], GasA1}
                                             end
                                     end, {[], Gas}, maps:keys(Cache)),
@@ -896,6 +912,24 @@ refcount_delta(StoreKey, Val, Store) ->
             Bin  -> aeb_fate_maps:refcount(aeb_fate_encoding:deserialize(Bin))
         end,
     aeb_fate_maps:refcount_diff(New, Old).
+
+%% Same as refcount_delta/3, but charges the lookup. Used from the
+%% finalize-time in-place update path, where the read is a real single-key
+%% store read rather than a lookup in an already-charged subtree.
+%% Charge-before-work: the bytes are paid before the value is deserialized.
+-spec refcount_delta(binary(), fate_val() | ?FATE_MAP_TOMBSTONE,
+                     aect_contracts_store:store(), non_neg_integer()) ->
+        {aeb_fate_maps:refcount(), non_neg_integer()}.
+refcount_delta(StoreKey, Val, Store, GasLeft) ->
+    New      = aeb_fate_maps:refcount(Val),
+    Bin      = aect_contracts_store:get(StoreKey, Store),
+    GasLeft1 = spend_read_gas(GasLeft, byte_size(Bin)),
+    Old =
+        case Bin of
+            <<>> -> #{};
+            _    -> aeb_fate_maps:refcount(aeb_fate_encoding:deserialize(Bin))
+        end,
+    {aeb_fate_maps:refcount_diff(New, Old), GasLeft1}.
 
 %% Write new refcounts to the metadata
 -spec update_refcounts(aeb_fate_maps:refcount(), store_meta()) -> store_meta().

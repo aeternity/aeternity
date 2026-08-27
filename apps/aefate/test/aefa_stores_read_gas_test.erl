@@ -193,6 +193,127 @@ store_map_member_miss_out_of_gas_test() ->
 
 absent_key() -> aeb_fate_data:make_string(<<"missing">>).
 
+%%%===================================================================
+%%% (e) in-place update_map: its per-key store reads are charged too
+%%%===================================================================
+
+%% Charged single-key reads of an entry that update_map/4 overwrites. Each
+%% is a real aect_contracts_store:get/2 on map_raw_key(RawId, Key):
+%%   compute_reuse_only_refcounts/5   the optimistic reuse fixpoint
+%%   compute_copy_refcounts/5         the same subtraction, re-run on the
+%%                                    reuse branch once the fixpoint converged
+%%   size_delta/4                     update_map/4's membership check
+%% update_map/4's nested-refcount fold reads at a different key, so its
+%% charge is a flat floor rather than a byte-proportional term and cancels
+%% out of the marginal comparison below.
+-define(UPDATE_MAP_BYTE_CHARGED_READS, 3).
+
+%% Overwriting one entry of a store map in place performs the reads above.
+%% Vary only the byte size of the value being overwritten: every other cost
+%% in the round-trip -- register write, new value written, metadata, the
+%% flat read floors -- is identical across the runs, so it cancels and the
+%% marginal gas is exactly the charged reads times the per-byte rate.
+update_map_overwrite_read_charged_proportional_to_bytes_test() ->
+    Sizes = [200, 1000, 10000],
+    [{S0, G0}, {S1, G1}, {S2, G2}] =
+        [ {Size, inplace_overwrite_gas(Size)} || Size <- Sizes ],
+    V0 = value_bytes(S0),
+    V1 = value_bytes(S1),
+    V2 = value_bytes(S2),
+    Rate = aec_governance:store_read_byte_gas(),
+    ?assertEqual(?UPDATE_MAP_BYTE_CHARGED_READS * Rate * (V1 - V0), G1 - G0),
+    ?assertEqual(?UPDATE_MAP_BYTE_CHARGED_READS * Rate * (V2 - V1), G2 - G1).
+
+%% Read floors charged per key inserted into an existing store map. The key
+%% is new, so each of the three sites above charges its floor rather than a
+%% byte-proportional cost, and update_map/4's nested-refcount fold charges a
+%% fourth floor here where the byte-proportional test sees none.
+-define(UPDATE_MAP_INSERT_FLOOR_READS, 4).
+
+%% The finalize-time fixpoint sites' floors used to be free: find_in_store/3
+%% deliberately leaves a miss uncharged and lets the caller decide, and the
+%% two fixpoint callers took `error -> {Acc, GasA}`. Inserting fresh keys
+%% into a store map updated in place is the shape that charges all four
+%% floors. Vary only the number of inserted keys, holding each key's and
+%% value's serialized size constant and both resulting map sizes below 64 so
+%% the metadata term serializes to the same length either way.
+update_map_insert_charges_read_floor_test() ->
+    Base     = aec_governance:store_read_base_gas(),
+    ByteGas  = aec_governance:store_byte_gas(),
+    {N1, N2} = {10, 20},
+    G1 = inplace_insert_gas(N1),
+    G2 = inplace_insert_gas(N2),
+    PerKey = ByteGas * (byte_size(insert_key_bin(0)) + byte_size(insert_val_bin()))
+           + ?UPDATE_MAP_INSERT_FLOOR_READS * Base,
+    ?assertEqual((N2 - N1) * PerKey, G2 - G1).
+
+%% A read is charged before the work it guards, so an in-place update that
+%% cannot pay for its per-key reads is out_of_gas rather than a cheap write.
+update_map_insert_out_of_gas_test() ->
+    {MapId, Stores, ChainApi} = seed_store_map(#{overwrite_key() => big_value(200)}),
+    Update = ?FATE_STORE_MAP(insert_cache(1), MapId),
+    Stores1 = aefa_stores:put_value(?CONTRACT_PUBKEY, ?MAP_STORE_POS, Update, Stores),
+    TooLittle = aec_governance:store_read_base_gas() - 1,
+    ?assertEqual({error, out_of_gas},
+                 aefa_stores:finalize(ChainApi, TooLittle, Stores1)).
+
+%%% -- (e) helpers ---------------------------------------------------------
+
+overwrite_key() -> aeb_fate_data:make_string(<<"k">>).
+
+big_value(Size) -> aeb_fate_data:make_string(binary:copy(<<$a>>, Size)).
+
+%% Fixed-width so every inserted entry writes the same number of bytes.
+insert_key(I) ->
+    aeb_fate_data:make_string(list_to_binary(io_lib:format("i~4..0b", [I]))).
+
+insert_key_bin(I) -> aeb_fate_encoding:serialize(insert_key(I)).
+
+insert_val() -> aeb_fate_data:make_string(<<"v">>).
+
+insert_val_bin() -> aeb_fate_encoding:serialize(insert_val()).
+
+insert_cache(N) ->
+    maps:from_list([ {insert_key(I), insert_val()} || I <- lists:seq(1, N) ]).
+
+%% Gas consumed by one finalize/3 that overwrites the single seeded entry of
+%% an existing store map in place. The seeded value's size is the only thing
+%% that varies; the value written over it is constant.
+inplace_overwrite_gas(Size) ->
+    {MapId, Stores, ChainApi} = seed_store_map(#{overwrite_key() => big_value(Size)}),
+    Update = ?FATE_STORE_MAP(#{overwrite_key() => insert_val()}, MapId),
+    inplace_update_gas(MapId, Update, Stores, ChainApi).
+
+%% Gas consumed by one finalize/3 that inserts N fresh keys into an existing
+%% store map in place. The seeded entry clears ?STORE_MAP_THRESHOLD so the
+%% value is genuinely a store map; it is left untouched by the update.
+inplace_insert_gas(N) ->
+    {MapId, Stores, ChainApi} = seed_store_map(#{overwrite_key() => big_value(200)}),
+    inplace_update_gas(MapId, ?FATE_STORE_MAP(insert_cache(N), MapId), Stores, ChainApi).
+
+inplace_update_gas(_MapId, Update, Stores, ChainApi) ->
+    Stores1 = aefa_stores:put_value(?CONTRACT_PUBKEY, ?MAP_STORE_POS, Update, Stores),
+    {ok, _ChainApi1, GasLeft} = aefa_stores:finalize(ChainApi, ?SEED_GAS, Stores1),
+    ?SEED_GAS - GasLeft.
+
+%% Writes Entries as a real on-chain store map (a full finalize/3 round-trip,
+%% so it is genuinely allocated rather than left inline) and hands back the
+%% map id plus a store and chain api ready for a second, in-place update.
+seed_store_map(Entries) ->
+    ChainApi0 = fresh_chain_api(?ARCUS_PROTOCOL_VSN),
+    Stores0 = aefa_stores:put_contract_store(?CONTRACT_PUBKEY,
+                                             aefa_stores:initial_contract_store(),
+                                             aefa_stores:new()),
+    Stores1 = aefa_stores:put_value(?CONTRACT_PUBKEY, ?MAP_STORE_POS,
+                                    aeb_fate_data:make_map(Entries), Stores0),
+    {ok, ChainApi1, _} = aefa_stores:finalize(ChainApi0, ?SEED_GAS, Stores1),
+    {OnChainStore, ChainApi2} = aefa_chain_api:contract_store(?CONTRACT_PUBKEY, ChainApi1),
+    Stores2 = aefa_stores:put_contract_store(?CONTRACT_PUBKEY, OnChainStore, aefa_stores:new()),
+    {ok, RegVal, Stores3, _, _} =
+        aefa_stores:find_value(?CONTRACT_PUBKEY, ?MAP_STORE_POS, Stores2, ?SEED_GAS),
+    ?FATE_STORE_MAP(_Cache, MapId) = RegVal,
+    {MapId, Stores3, ChainApi2}.
+
 %% Seeds a real on-chain store map (via a real finalize/3 round-trip, so the
 %% value is genuinely allocated as a store map rather than left inline) and
 %% returns {MapId, Store} ready for a fresh store_map_lookup/member call.
