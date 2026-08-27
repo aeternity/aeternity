@@ -1,28 +1,10 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2026, Aeternity Anstalt
 %%% @doc
-%%%    Per-family gas table for aetx.
-%%%
-%%%    aetx_tests only pins aetx:used_gas/4 for spend_tx, so every other
-%%%    family's fee/gas arithmetic is exercised only indirectly through CT
-%%%    suites that assert no numbers. This walks aetx:tx_types/0 and pins
-%%%    tx_min_gas/2, fee_gas/3, gas_limit/3 and min_fee/3 for one fixed
-%%%    transaction per type, at a fixed height, on the last activated
-%%%    protocol and on Arcus. A new tx type then arrives as a failing
-%%%    coverage test rather than silently, and a repricing has to restate
-%%%    which families it moves.
-%%%
-%%%    Complements, and deliberately does not duplicate, the coverage
-%%%    tests in aetx_tests: those assert that no type raises and that
-%%%    every type is either priced or on the no-base-gas list; this one
-%%%    asserts the actual numbers.
-%%%
-%%%    `function_clause' in a table cell is a pinned defect, not an
-%%%    expectation: aec_governance:tx_base_gas/2 has no catch-all, so the
-%%%    three types with no clause raise out of the arities that reach it.
-%%%    Fixing that changes what a block-admission predicate returns and is
-%%%    tracked separately; the cells are here so the fix has to come past
-%%%    this table.
+%%%    Per-family gas table for aetx. Walks tx_types/0 and pins tx_min_gas/2,
+%%%    fee_gas/3, gas_limit/3 and min_fee/3 per type on the last activated
+%%%    protocol and on Arcus, so a new type arrives as a failing coverage test.
+%%%    aetx_tests asserts that no type raises; this asserts the numbers.
 %%% @end
 %%%-------------------------------------------------------------------
 -module(aetx_gas_table_tests).
@@ -88,21 +70,16 @@ gas_table() ->
     , {channel_settle_tx,            {16640, 16640, 16640, 16640000000}}
     , {channel_snapshot_solo_tx,     {16620, 16620, 16620, 16620000000}}
     , {channel_set_delegates_tx,     {17380, 17380, 17380, 17380000000}}
-      %% gas_limit/3 has an explicit 0 clause, and fee_gas/3's catch-all
-      %% follows it; tx_min_gas/2 has no such clause and raises.
-    , {channel_offchain_tx,          {function_clause, 0, 0, 0}}
+      %% On no_base_gas_tx_types/0: all four arities read that list and answer 0.
+    , {channel_offchain_tx,          {0, 0, 0, 0}}
     , {channel_client_reconnect_tx,  unconstructible}
-      %% No aec_governance:tx_base_gas/2 clause, and unlike the two channel
-      %% types no zero-gas clause anywhere, so all four raise.
-    , {hc_vote_tx,                   {function_clause, function_clause,
-                                      function_clause, function_clause}}
+      %% Also on no_base_gas_tx_types/0, so the same four zeros.
+    , {hc_vote_tx,                   {0, 0, 0, 0}}
     ].
 
-%% One table, asserted at both protocols. tx_base_gas/2 is protocol-blind
-%% for every type here except channel_force_progress_tx, whose split is at
-%% Minerva, so Arcus reprices nothing in this table today -- and that is an
-%% assertion, not a comment: a repricing red-fails the protocol-7 rows and
-%% has to be written out as its own table before it can go green.
+%% One table asserted at both protocols: Arcus reprices nothing in it today.
+%% That is an assertion rather than a note - a repricing red-fails the
+%% protocol-7 rows and has to be written out as its own table.
 protocol_tables() ->
     [ {?CERES_PROTOCOL_VSN, gas_table()}
     , {?ARCUS_PROTOCOL_VSN, gas_table()}
