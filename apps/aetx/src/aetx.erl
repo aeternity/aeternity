@@ -318,10 +318,23 @@ used_gas(#aetx{ type = ga_meta_tx, cb = CB, size = Size, tx = Tx }, Height, Vers
     Pubkey = CB:ga_pubkey(Tx),
     AuthCallId = CB:call_id(Tx, Trees),
     AuthGas = call_gas_used(Trees, Pubkey, AuthCallId),
-    base_gas(ga_meta_tx, Version, CB:abi_version(Tx)) + size_gas(Size) + AuthGas +
+    InnerTx = #aetx{ size = ISize } = aetx_sign:tx(CB:tx(Tx)),
+    base_gas(ga_meta_tx, Version, CB:abi_version(Tx)) + AuthGas +
         case CB:inner_tx_was_succesful(Tx, Trees) of
-            false -> 0;
-            true  -> used_gas(aetx_sign:tx(CB:tx(Tx)), Height, Version, Trees, Ctx#{ga_nonce => CB:auth_id(Tx)})
+            false ->
+                %% The inner transaction is not applied and never charged for
+                %% itself, so the envelope carries its bytes: Size, whole.
+                size_gas(Size);
+            true  ->
+                %% Size is the whole envelope, so used_gas(InnerTx) charges
+                %% the inner bytes twice. Netting it out below Arcus would
+                %% change which transactions fit in blocks already produced.
+                InnerGas = used_gas(InnerTx, Height, Version, Trees,
+                                    Ctx#{ga_nonce => CB:auth_id(Tx)}),
+                case Version >= ?ARCUS_PROTOCOL_VSN of
+                    true  -> size_gas(Size - ISize) + InnerGas;
+                    false -> size_gas(Size) + InnerGas
+                end
         end;
 used_gas(#aetx{type = contract_create_tx, cb = CB, size = Size, tx = Tx}, _Height, Version, Trees, #{ga_nonce := GANonce}) ->
     ContractPubkey = aect_contracts:compute_contract_pubkey(CB:owner_pubkey(Tx), GANonce),

@@ -8,25 +8,54 @@
 -mode(compile).
 
 main(Args) ->
-    {ShowHelp, OutFile} = process_args(Args),
+    {ShowHelp, OutFile, GasModSrc} = process_args(Args),
     maybe_show_help(ShowHelp),
+    load_gas_module(GasModSrc),
     do_main(OutFile).
 
 usage() ->
-    io:format("Usage: aefa_gen_dispatch [--help | OUT_FILE]~n", []).
+    io:format("Usage: aefa_gen_dispatch [--help | OUT_FILE [OP_GAS_SRC]]~n", []).
 
 process_args(["--help" | _]) ->
-    {true, nil};
+    {true, nil, nil};
 process_args([OutFile]) ->
-    {false, OutFile};
+    {false, OutFile, default_gas_module_src()};
+process_args([OutFile, GasModSrc]) ->
+    {false, OutFile, GasModSrc};
 process_args(_) ->
-    {true, nil}.
+    {true, nil, nil}.
 
 maybe_show_help(true) ->
     usage(),
     halt(0);
 maybe_show_help(false) ->
     ok.
+
+%% The node-side per-protocol price table (see aefa_fate_op_gas). Resolved
+%% from this script's own location rather than the working directory, and
+%% overridable by a second argument so aefa_fate_op_gas_test can generate a
+%% dispatch from a hypothetical table without touching the real one.
+default_gas_module_src() ->
+    filename:join([filename:dirname(escript:script_name()), "..", "src",
+                   "aefa_fate_op_gas.erl"]).
+
+%% Compiled from source here, not taken off the code path: this runs from the
+%% aefate pre-compile hook, before the application it belongs to is built.
+load_gas_module(Src) ->
+    case compile:file(Src, [binary, return_errors]) of
+        {ok, Mod, Bin} ->
+            {module, Mod} = code:load_binary(Mod, Src, Bin),
+            put(op_gas_module, Mod),
+            ok;
+        Error ->
+            io:format("Cannot compile FATE instruction gas table ~s: ~p~n",
+                      [Src, Error]),
+            halt(1)
+    end.
+
+op_gas(OpName, BaseGas) ->
+    Mod = get(op_gas_module),
+    Mod:gas_term(OpName, BaseGas).
 
 -define(IS_DEBUG_OP(Op),
     (Op =:= dbg_def orelse
@@ -58,7 +87,8 @@ do_main(Filename) ->
     io:format(File, "\n", []),
     file:close(File).
 
-gen_eval(#{ constructor := Constructor, gas := Gas } = Op, EvalKind) ->
+gen_eval(#{ constructor := Constructor, opname := OpName, gas := BaseGas } = Op, EvalKind) ->
+    Gas = op_gas(OpName, BaseGas),
     check_descending(Constructor, Gas),
     Cmd = io_lib:format("aefa_fate_op:~w(~saefa_engine_state:spend_gas(~w, EngineState))",
                         [Constructor, gen_cargs(Op), Gas]),
