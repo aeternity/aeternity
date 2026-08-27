@@ -209,13 +209,23 @@ constructible_no_base_gas_txs() ->
                              data     => #{}}),
     [OffchainTx, VoteTx].
 
-%% The no-base-gas types are not the only route to zero fee gas. An oracle
-%% transaction whose absolute TTL is already behind the current height falls off
-%% aeo_utils:ttl_delta/2 with {error, too_low_height}, and gas_limit/3's oracle
-%% clauses answer 0 for it - the case aetx:check_minimum_fee/2's own comment
-%% names. fee_gas/3's catch-all then delegates to gas_limit/3, so min_gas_price/3
-%% divides by that zero for an ordinary, priced tx type. Kept as its own test
-%% because it is a second, independent way into fee_gas_price/2's zero clause.
+%% The same list through gas_limit/3, which prices a received micro block at
+%% Iris and below. The probe carries tx = undefined, so it suits only a type
+%% whose arm never dereferences it - which answering from the list guarantees
+%% for every entry, including one added after this was written.
+no_base_gas_gas_limit_probe_test_() ->
+    Height = 100,
+    [ {lists:concat(["gas_limit/3 for ", Type, " at protocol ", Protocol]),
+       fun() -> ?assertEqual(0, gas_limit_of(Type, Protocol, Height)) end}
+      || Type <- ?TEST_MODULE:no_base_gas_tx_types(), Protocol <- ?PROTOCOLS ].
+
+gas_limit_of(Type, Protocol, Height) ->
+    ?TEST_MODULE:gas_limit(?TEST_MODULE:min_gas_probe(Type, ?MODULE, ?PROBE_SIZE),
+                           Height, Protocol).
+
+%% A second, independent route to zero fee gas: an oracle transaction whose
+%% absolute TTL is behind the current height falls off ttl_delta/2, gas_limit/3
+%% answers 0, and min_gas_price/3 then divides by it for a priced type.
 expired_absolute_ttl_oracle_tx_fee_functions_test_() ->
     Height = 100,
     Expired = {block, Height - 50},

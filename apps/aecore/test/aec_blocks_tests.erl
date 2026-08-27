@@ -27,6 +27,12 @@
 %% list governs. Ceres is what ae_mainnet runs.
 -define(PROTOCOLS_ABOVE_IRIS, [?CERES_PROTOCOL_VSN, ?ARCUS_PROTOCOL_VSN,
                                ?SALUS_PROTOCOL_VSN]).
+%% The other half of the split - the protocols gas/1 prices through
+%% aetx:gas_limit/3. The probe suits only the no-base-gas types; the oracle
+%% clauses dereference the transaction.
+-define(PROTOCOLS_AT_OR_BELOW_IRIS, [?ROMA_PROTOCOL_VSN, ?MINERVA_PROTOCOL_VSN,
+                                     ?FORTUNA_PROTOCOL_VSN, ?LIMA_PROTOCOL_VSN,
+                                     ?IRIS_PROTOCOL_VSN]).
 -define(PROBE_SIZE, 100).
 
 validate_test_() ->
@@ -51,13 +57,12 @@ validate_test_() ->
      , {"Pass validation - case some txs",
         fun validate_test_pass_validation/0}
      ] ++ micro_block_gas_covers_every_tx_type()
+       ++ micro_block_gas_at_or_below_iris_for_no_base_gas_types()
        ++ validate_micro_block_holding_a_no_base_gas_tx()}.
 
-%% gas/1 is the only caller of aetx:tx_min_gas/2, and above Iris it calls it on
-%% every transaction of a received micro block. A type aec_governance cannot
-%% price has to come back as 0 rather than raise function_clause, so enumerate
-%% every entry of aetx:tx_types/0 here - the next new type fails this test
-%% instead of the node.
+%% Above Iris gas/1 calls tx_min_gas/2 on every transaction of a received
+%% micro block, so an unpriceable type must answer 0 rather than raise.
+%% Enumerated over tx_types/0 so the next new type fails here, not the node.
 micro_block_gas_covers_every_tx_type() ->
     NoBaseGas = aetx:no_base_gas_tx_types(),
     [ {lists:concat(["gas/1 for ", Type, " at protocol ", Protocol]),
@@ -72,13 +77,22 @@ micro_block_gas_covers_every_tx_type() ->
        end}
       || Type <- aetx:tx_types(), Protocol <- ?PROTOCOLS_ABOVE_IRIS ].
 
-%% The regression that matters: the whole validator pipeline, not one function.
-%% aec_conductor:add_block/2 runs aec_validation:validate_block/2 in the calling
-%% process - the peer connection or the sync worker - and the micro block
-%% signature is not checked before this point (aec_headers:validate_micro_block_
-%% header/2 says so itself). aeu_validation:run/2 is a bare apply/2 recursion
-%% with no catch, so before the fix validate_gas_limit/1 took that process down
-%% on remote, unsigned input. It has to return instead.
+%% Below the split gas/1 calls gas_limit/3 with the same obligation, under
+%% aeu_validation:run/2, which has no catch. Only the no-base-gas types are
+%% enumerated: the probe cannot drive gas_limit/3 for an oracle type.
+micro_block_gas_at_or_below_iris_for_no_base_gas_types() ->
+    [ {lists:concat(["gas/1 for ", Type, " at protocol ", Protocol]),
+       fun() ->
+               Block = micro_block_at(Protocol, [probe_tx(Type)],
+                                      ?FAKE_TXS_TREE_HASH),
+               ?assertEqual(0, ?TEST_MODULE:gas(Block))
+       end}
+      || Type <- aetx:no_base_gas_tx_types(),
+         Protocol <- ?PROTOCOLS_AT_OR_BELOW_IRIS ].
+
+%% The whole validator pipeline, not one function: add_block/2 validates in
+%% the caller's process - a peer connection - before the micro block signature
+%% is checked, so a raise here took that process down on unsigned input.
 validate_micro_block_holding_a_no_base_gas_tx() ->
     [ {lists:concat(["validate_micro_block/2 with a channel_offchain_tx",
                      " at protocol ", Protocol]),

@@ -299,17 +299,13 @@ gas_limit(#aetx{ type = paying_for_tx, cb = CB, size = Size, tx = Tx }, Height, 
     base_gas(paying_for_tx, Version) + size_gas(Size - ISize) + gas_limit(InnerTx, Height, Version);
 gas_limit(#aetx{type = Type, size = Size, cb = CB, tx = Tx}, _Height, Version) when ?IS_CONTRACT_TX(Type) ->
     base_gas(Type, Version, CB:abi_version(Tx)) + size_gas(Size) + CB:gas(Tx);
-%% No aec_governance:tx_base_gas/2 clause exists for these - see
-%% no_base_gas_tx_types/0. They have to be matched ahead of the catch-all below,
-%% which would otherwise route them into base_gas/2 and raise function_clause.
-gas_limit(#aetx{ type = channel_offchain_tx }, _Height, _Version) ->
-    0;
-gas_limit(#aetx{ type = channel_client_reconnect_tx }, _Height, _Version) ->
-    0;
-gas_limit(#aetx{ type = hc_vote_tx }, _Height, _Version) ->
-    0;
+%% The same block-admission pricing path as tx_min_gas/2, for Iris and below.
+%% Read the list rather than repeating it as clause heads; the copies drifted.
 gas_limit(#aetx{ type = Type, cb = CB, size = Size, tx = Tx }, _Height, Version) ->
-    base_gas(Type, Version) + size_gas(Size) + CB:gas(Tx).
+    case lists:member(Type, no_base_gas_tx_types()) of
+        true  -> 0;
+        false -> base_gas(Type, Version) + size_gas(Size) + CB:gas(Tx)
+    end.
 
 -spec used_gas(Tx :: tx(), Height :: aec_blocks:height(),
                Version :: aec_hard_forks:protocol_vsn(), Trees :: aec_trees:trees()) ->
