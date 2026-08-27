@@ -2213,8 +2213,9 @@ set_min_relay(Value, UtilValue) ->
         , {ga_meta_tx,         <<"GAMetaTx">>}
         ]).
 
-%% Mirrors aehttp_dispatch_ext:?NO_BASE_GAS_TX_TYPES - the types that carry no
-%% base gas, and so are deliberately absent from the response.
+%% Mirrors aetx:no_base_gas_tx_types/0 - the types that carry no base gas, and so
+%% are deliberately absent from the response. Spelled out rather than read from
+%% the node, so that a type quietly added there fails here.
 -define(PROTOCOL_PARAMS_NO_BASE_GAS_TX_TYPES,
         [channel_offchain_tx, channel_client_reconnect_tx, hc_vote_tx]).
 

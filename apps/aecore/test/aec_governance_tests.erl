@@ -168,3 +168,88 @@ app_file(App) ->
     {ok, [{application, App, Props}]} =
         file:consult(code:where_is_file(atom_to_list(App) ++ ".app")),
     Props.
+
+%% On a network whose limit is everybody's, an override is a fork rather than
+%% a local knob, so ensure_env/0 refuses to start with one set.
+block_gas_limit_override_test_() ->
+    {foreach,
+     fun() ->
+             %% The refusal logs before it raises.
+             aec_test_utils:ensure_system_init(),
+             ok = application:unset_env(aecore, block_gas_limit),
+             ok = ?TEST_MODULE:clear_network_id_cache(),
+             meck:new(?TEST_MODULE, [passthrough]),
+             set_resolved_network_id(?NW_ID_A)
+     end,
+     fun(_) ->
+             ok = application:unset_env(aecore, block_gas_limit),
+             ok = ?TEST_MODULE:clear_network_id_cache(),
+             meck:unload(?TEST_MODULE)
+     end,
+     [{"Every network starts when nothing is overriding the limit",
+       fun no_override_starts_on_every_network/0},
+      {"A network that fixes the limit refuses to start with an override",
+       fun override_refuses_to_start_on_fixed_networks/0},
+      {"A refused override leaves the network id cache empty, not stale",
+       fun refused_override_leaves_cache_empty/0},
+      {"Configuring the network's own value is not an override",
+       fun override_equal_to_the_network_value_starts/0},
+      {"A network that does not fix the limit still takes an override",
+       fun override_allowed_on_other_networks/0}]}.
+
+%% ae_dev and the hyperchain ids are deliberately not here: their limit is a
+%% property of that deployment, agreed among its own nodes.
+fixed_limit_network_ids() ->
+    [<<"ae_mainnet">>, <<"ae_uat">>].
+
+no_override_starts_on_every_network() ->
+    [ begin
+          set_resolved_network_id(NetworkId),
+          ok = ?TEST_MODULE:clear_network_id_cache(),
+          ?assertEqual(ok, ?TEST_MODULE:ensure_env()),
+          ?assertEqual(NetworkId, ?TEST_MODULE:get_network_id())
+      end || NetworkId <- [?NW_ID_A | fixed_limit_network_ids()] ].
+
+override_refuses_to_start_on_fixed_networks() ->
+    NetworkValue = ?TEST_MODULE:block_gas_limit(),
+    [ begin
+          set_resolved_network_id(NetworkId),
+          ok = ?TEST_MODULE:clear_network_id_cache(),
+          ok = application:set_env(aecore, block_gas_limit, NetworkValue * 2),
+          ?assertError({block_gas_limit_override_would_fork,
+                        #{network_id := NetworkId,
+                          configured := _,
+                          network    := NetworkValue}},
+                       ?TEST_MODULE:ensure_env()),
+          %% Lowering it forks just as surely as raising it.
+          ok = application:set_env(aecore, block_gas_limit, NetworkValue - 1),
+          ?assertError({block_gas_limit_override_would_fork, _},
+                       ?TEST_MODULE:ensure_env())
+      end || NetworkId <- fixed_limit_network_ids() ].
+
+%% Same fail-closed contract the network id resolution has: a refusal must not
+%% leave a pinned id behind for whatever runs next in this VM.
+refused_override_leaves_cache_empty() ->
+    set_resolved_network_id(<<"ae_mainnet">>),
+    ok = ?TEST_MODULE:ensure_env(),
+    ok = application:set_env(aecore, block_gas_limit, 1),
+    ?assertError({block_gas_limit_override_would_fork, _}, ?TEST_MODULE:ensure_env()),
+    ok = application:unset_env(aecore, block_gas_limit),
+    set_resolved_network_id(?NW_ID_B),
+    ?assertEqual(?NW_ID_B, ?TEST_MODULE:get_network_id()).
+
+override_equal_to_the_network_value_starts() ->
+    NetworkValue = ?TEST_MODULE:block_gas_limit(),
+    ok = application:set_env(aecore, block_gas_limit, NetworkValue),
+    [ begin
+          set_resolved_network_id(NetworkId),
+          ok = ?TEST_MODULE:clear_network_id_cache(),
+          ?assertEqual(ok, ?TEST_MODULE:ensure_env()),
+          ?assertEqual(NetworkValue, ?TEST_MODULE:block_gas_limit())
+      end || NetworkId <- fixed_limit_network_ids() ].
+
+override_allowed_on_other_networks() ->
+    Override = ?TEST_MODULE:block_gas_limit() * 3,
+    ok = application:set_env(aecore, block_gas_limit, Override),
+    ?assertEqual(ok, ?TEST_MODULE:ensure_env()),
+    ?assertEqual(Override, ?TEST_MODULE:block_gas_limit()).
