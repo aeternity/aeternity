@@ -172,7 +172,10 @@ run_common(#{vm := VMVersion, abi := ABIVersion},
     OriginAddr = get_origin(VMVersion, CallerAddr, OriginAddr0),
     Env = #{currentCoinbase   => BeneficiaryInt,
             currentDifficulty => aetx_env:difficulty(TxEnv),
-            currentGasLimit   => aec_governance:block_gas_limit(),
+            %% Consensus-visible: the AEVM GASLIMIT opcode reads this back,
+            %% so it takes the protocol-dimensioned arity, never /0.
+            currentGasLimit   => aec_governance:block_gas_limit(
+                                   aetx_env:consensus_version(TxEnv)),
             currentNumber     => aetx_env:height(TxEnv),
             currentTimestamp  => aetx_env:time_in_msecs(TxEnv),
             authTxHash        => aetx_env:ga_tx_hash(TxEnv),

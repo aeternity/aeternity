@@ -159,9 +159,9 @@ difficulty(#state{} = S) ->
     aeb_fate_data:make_integer(aetx_env:difficulty(tx_env(S))).
 
 -spec gas_limit(state()) -> aeb_fate_data:fate_integer().
-gas_limit(#state{}) ->
-    %% Should be tied to height if this is changed.
-    aeb_fate_data:make_integer(aec_governance:block_gas_limit()).
+gas_limit(#state{} = S) ->
+    Protocol = aetx_env:consensus_version(tx_env(S)),
+    aeb_fate_data:make_integer(aec_governance:block_gas_limit(Protocol)).
 
 -spec network_id(state()) -> aeb_fate_data:fate_string().
 network_id(#state{}) ->

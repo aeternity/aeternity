@@ -6,6 +6,7 @@
          expected_block_mine_rate/0,
          block_mine_reward/1,
          block_gas_limit/0,
+         block_gas_limit/1,
          tx_base_gas/2,
          tx_base_gas/3, %% VM depending operations
          byte_gas/0,
@@ -128,8 +129,18 @@ block_mine_reward(Height) when is_integer(Height), Height > 0 ->
 
 %% In Ethereum, block gas limit is changed in every block. The new block gas
 %% limit is decided by algorithm and vote by miners.
+%%
+%% Node-local admission knob. Anything whose result reaches the state root
+%% reads block_gas_limit/1 instead.
 block_gas_limit() ->
     application:get_env(aecore, block_gas_limit, ?BLOCK_GAS_LIMIT).
+
+-spec block_gas_limit(aec_hard_forks:protocol_vsn()) -> non_neg_integer().
+%% Consensus-visible: the FATE and AEVM GASLIMIT opcodes return this, so it
+%% must never read the operator's env. The clause below is an open catch-all,
+%% so a repricing clause for a new protocol goes ABOVE it or it is dead.
+block_gas_limit(Protocol) when Protocol >= ?ROMA_PROTOCOL_VSN ->
+    ?BLOCK_GAS_LIMIT.
 
 min_tx_gas() -> ?TX_BASE_GAS.
 

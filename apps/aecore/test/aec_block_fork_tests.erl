@@ -213,6 +213,105 @@ apply_lima_test_() ->
 tx_env() ->
     aetx_env:tx_env(42).
 
+%%%===================================================================
+%%% The fork contract gas budget: it becomes the `gas` of every synthesised
+%%% contract_create_tx at a fork transition, so an operator-set limit below a
+%%% fork contract's init cost diverges the state root. Read directly, because
+%%% apply_lima_test_/0 does not run on the default lane and would skip.
+%%%===================================================================
+
+%% Written out rather than read from aec_governance, so the number is pinned
+%% rather than restated.
+-define(HISTORICAL_BLOCK_GAS_LIMIT, 6000000).
+
+%% Far from 6,000,000 and not a multiple of it, and far below any fork
+%% contract's init cost - which is the shape that actually diverges.
+-define(OVERRIDE_BLOCK_GAS_LIMIT, 1234).
+
+%% Not derived from aec_hard_forks:sorted_protocol_versions/0: that returns
+%% only the protocols this VM's network id enables - two of them on the
+%% default lane - and would quietly shrink "every protocol" to that.
+-define(ALL_PROTOCOLS, [ ?ROMA_PROTOCOL_VSN
+                       , ?MINERVA_PROTOCOL_VSN
+                       , ?FORTUNA_PROTOCOL_VSN
+                       , ?LIMA_PROTOCOL_VSN
+                       , ?IRIS_PROTOCOL_VSN
+                       , ?CERES_PROTOCOL_VSN
+                       , ?ARCUS_PROTOCOL_VSN
+                       , ?SALUS_PROTOCOL_VSN
+                       ]).
+
+fork_contract_gas_budget_test_() ->
+    {foreach,
+     fun() -> application:get_env(aecore, block_gas_limit) end,
+     fun(Saved) -> restore_env(block_gas_limit, Saved) end,
+     [{"The Lima fork contract gas budget is the historical value",
+       fun budget_is_historical_at_lima/0},
+      {"The fork contract gas budget is the historical value at every protocol",
+       fun budget_is_historical_at_every_protocol/0},
+      {"A correctly-configured node's budget is unchanged by the patch",
+       fun budget_agrees_with_the_default_configured_node/0},
+      {"The fork contract gas budget does not move when the aecore knob is set",
+       fun budget_is_immune_to_the_knob/0},
+      {"The knob is real: it still moves block admission",
+       fun the_knob_still_moves_block_admission/0}]}.
+
+budget_is_historical_at_lima() ->
+    ok = application:unset_env(aecore, block_gas_limit),
+    ?assertEqual(?HISTORICAL_BLOCK_GAS_LIMIT, fork_gas_limit(?LIMA_PROTOCOL_VSN)).
+
+%% apply/3 only reaches this function at Lima today, but the function is not
+%% Lima-specific and the next fork that ships contracts will land on it.
+budget_is_historical_at_every_protocol() ->
+    ok = application:unset_env(aecore, block_gas_limit),
+    [?assertEqual({P, ?HISTORICAL_BLOCK_GAS_LIMIT}, {P, fork_gas_limit(P)})
+     || P <- ?ALL_PROTOCOLS].
+
+%% The replay-identity claim for this call site, as a test: with the knob
+%% unset - i.e. on every correctly-configured node - the patched budget is the
+%% same number the unpatched one produced, so no historical fork transition
+%% moves.
+budget_agrees_with_the_default_configured_node() ->
+    ok = application:unset_env(aecore, block_gas_limit),
+    [?assertEqual({P, aec_governance:block_gas_limit()}, {P, fork_gas_limit(P)})
+     || P <- ?ALL_PROTOCOLS].
+
+%% The red witness. On the unpatched tree every row here answers
+%% ?OVERRIDE_BLOCK_GAS_LIMIT, and 1234 is below any fork contract's init cost
+%% - so on that tree the create fails on this node and succeeds everywhere
+%% else, which is the divergence itself rather than a proxy for it.
+budget_is_immune_to_the_knob() ->
+    ok = application:unset_env(aecore, block_gas_limit),
+    Unset = [{P, fork_gas_limit(P)} || P <- ?ALL_PROTOCOLS],
+    ok = application:set_env(aecore, block_gas_limit, ?OVERRIDE_BLOCK_GAS_LIMIT),
+    Overridden = [{P, fork_gas_limit(P)} || P <- ?ALL_PROTOCOLS],
+    ?assertEqual(Unset, Overridden).
+
+%% Control. Without it the cases above would also pass on a node where the
+%% knob had stopped working altogether, which is a different bug with the same
+%% symptom.
+the_knob_still_moves_block_admission() ->
+    ok = application:set_env(aecore, block_gas_limit, ?OVERRIDE_BLOCK_GAS_LIMIT),
+    ?assertEqual(?OVERRIDE_BLOCK_GAS_LIMIT, aec_governance:block_gas_limit()),
+    ?assertNotEqual(aec_governance:block_gas_limit(),
+                    aec_governance:block_gas_limit(?LIMA_PROTOCOL_VSN)).
+
+%% The gas price is read from the same TxEnv on the line below the gas limit
+%% and is asserted alongside it, so a change that dimensioned the limit by
+%% breaking the price would not pass here quietly.
+fork_gas_limit(Protocol) ->
+    TxEnv = aetx_env:tx_env(42, Protocol),
+    #{ gas_limit := GasLimit
+     , gas_price := GasPrice } =
+        aec_block_fork:fork_contracts_static_specs(TxEnv),
+    ?assertEqual(aec_governance:minimum_gas_price(Protocol), GasPrice),
+    GasLimit.
+
+restore_env(Key, undefined) ->
+    application:unset_env(aecore, Key);
+restore_env(Key, {ok, Value}) ->
+    application:set_env(aecore, Key, Value).
+
 lima_migration_test(Source) ->
      AccountSpecs = migration_account_specs(),
      [{Account, _}] = generate_accounts(1),
