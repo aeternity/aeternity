@@ -1,11 +1,13 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2026, Aeternity Anstalt
-%%% @doc Tests for the caching of the network id.
+%%% @doc Tests for the caching of the network id, and for the split between
+%%%      the node-local and the consensus-visible block gas limit.
 %%%-------------------------------------------------------------------
 
 -module(aec_governance_tests).
 
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -define(TEST_MODULE, aec_governance).
 
@@ -168,3 +170,78 @@ app_file(App) ->
     {ok, [{application, App, Props}]} =
         file:consult(code:where_is_file(atom_to_list(App) ++ ".app")),
     Props.
+
+%%%===================================================================
+%%% Block gas limit: one node-local arity, one consensus-visible arity
+%%%
+%%% block_gas_limit/0 is the operator's block-admission knob and stays
+%%% configurable. block_gas_limit/1 is what the FATE GASLIMIT opcode reads,
+%%% so its value reaches the state root and must not follow configuration.
+%%%===================================================================
+
+%% Written out rather than derived from ?BLOCK_GAS_LIMIT (module-local to
+%% aec_governance) so the number itself is pinned: this is the value every
+%% node has computed for all of history, and a patch that moves it has to
+%% restate it here.
+-define(HISTORICAL_BLOCK_GAS_LIMIT, 6000000).
+
+%% Deliberately not aec_hard_forks:sorted_protocol_versions/0 - that returns
+%% only the protocols the eunit VM's network id enables, so a single-protocol
+%% lane would shrink the "every protocol version" claim to one row.
+-define(ALL_PROTOCOLS, [ ?ROMA_PROTOCOL_VSN
+                       , ?MINERVA_PROTOCOL_VSN
+                       , ?FORTUNA_PROTOCOL_VSN
+                       , ?LIMA_PROTOCOL_VSN
+                       , ?IRIS_PROTOCOL_VSN
+                       , ?CERES_PROTOCOL_VSN
+                       , ?ARCUS_PROTOCOL_VSN
+                       , ?SALUS_PROTOCOL_VSN
+                       ]).
+
+-define(OVERRIDE_BLOCK_GAS_LIMIT, 1234567).
+
+block_gas_limit_test_() ->
+    {foreach,
+     fun() -> application:get_env(aecore, block_gas_limit) end,
+     fun(Saved) -> restore_env(block_gas_limit, Saved) end,
+     [{"The consensus-visible limit is the historical value at every protocol",
+       fun consensus_block_gas_limit_is_historical/0},
+      {"...and does not move when the node-local knob is set",
+       fun consensus_block_gas_limit_ignores_the_knob/0},
+      {"The node-local knob still follows the configuration",
+       fun node_local_block_gas_limit_follows_the_knob/0},
+      {"Every protocol version has a clause",
+       fun consensus_block_gas_limit_is_total/0}]}.
+
+consensus_block_gas_limit_is_historical() ->
+    ok = application:unset_env(aecore, block_gas_limit),
+    [?assertEqual({Protocol, ?HISTORICAL_BLOCK_GAS_LIMIT},
+                  {Protocol, ?TEST_MODULE:block_gas_limit(Protocol)})
+     || Protocol <- ?ALL_PROTOCOLS].
+
+consensus_block_gas_limit_ignores_the_knob() ->
+    ok = application:set_env(aecore, block_gas_limit, ?OVERRIDE_BLOCK_GAS_LIMIT),
+    [?assertEqual({Protocol, ?HISTORICAL_BLOCK_GAS_LIMIT},
+                  {Protocol, ?TEST_MODULE:block_gas_limit(Protocol)})
+     || Protocol <- ?ALL_PROTOCOLS].
+
+%% Pinned on purpose: leaving block admission configurable is the decision,
+%% not an oversight. A patch that makes /0 config-immune too breaks hyperchains
+%% and should have to say so here.
+node_local_block_gas_limit_follows_the_knob() ->
+    ok = application:unset_env(aecore, block_gas_limit),
+    ?assertEqual(?HISTORICAL_BLOCK_GAS_LIMIT, ?TEST_MODULE:block_gas_limit()),
+    ok = application:set_env(aecore, block_gas_limit, ?OVERRIDE_BLOCK_GAS_LIMIT),
+    ?assertEqual(?OVERRIDE_BLOCK_GAS_LIMIT, ?TEST_MODULE:block_gas_limit()).
+
+%% A clause set closed at the newest named protocol would crash the node the
+%% day the next one is added, which is the failure mode a "pin it at every
+%% protocol" change most easily introduces.
+consensus_block_gas_limit_is_total() ->
+    Unknown = lists:max(?ALL_PROTOCOLS) + 1,
+    ?assertEqual(?HISTORICAL_BLOCK_GAS_LIMIT, ?TEST_MODULE:block_gas_limit(Unknown)).
+
+restore_env(Key, undefined) ->
+    application:unset_env(aecore, Key);
+restore_env(Key, {ok, Value}) ->
+    application:set_env(aecore, Key, Value).
