@@ -241,60 +241,133 @@ tx_env() ->
                        , ?SALUS_PROTOCOL_VSN
                        ]).
 
+%% The networks whose limit is the network's, not the operator's - the list
+%% aec_governance tests at both read sites. Written out rather than read from
+%% there: the macro is module-local, and a patch that shortens the list has to
+%% edit this line rather than quietly take these cases with it.
+-define(FIXED_NETWORK_IDS, [<<"ae_mainnet">>, <<"ae_uat">>]).
+
+%% ae_dev is the node's own configurable network; the second stands in for a
+%% hyperchain, whose ids this module cannot know.
+-define(CONFIGURABLE_NETWORK_IDS, [<<"ae_dev">>, <<"nw_id_for_testing">>]).
+
 fork_contract_gas_budget_test_() ->
     {foreach,
-     fun() -> application:get_env(aecore, block_gas_limit) end,
-     fun(Saved) -> restore_env(block_gas_limit, Saved) end,
+     fun() ->
+             Saved = application:get_env(aecore, block_gas_limit),
+             ok = aec_governance:clear_network_id_cache(),
+             meck:new(aec_governance, [passthrough]),
+             Saved
+     end,
+     fun(Saved) ->
+             %% Cleared first: a throw from meck:unload/1 must not leave a
+             %% pinned test id behind for the rest of the eunit VM.
+             ok = aec_governance:clear_network_id_cache(),
+             meck:unload(aec_governance),
+             restore_env(block_gas_limit, Saved)
+     end,
      [{"The Lima fork contract gas budget is the historical value",
        fun budget_is_historical_at_lima/0},
       {"The fork contract gas budget is the historical value at every protocol",
        fun budget_is_historical_at_every_protocol/0},
-      {"A correctly-configured node's budget is unchanged by the patch",
-       fun budget_agrees_with_the_default_configured_node/0},
-      {"The fork contract gas budget does not move when the aecore knob is set",
-       fun budget_is_immune_to_the_knob/0},
-      {"The knob is real: it still moves block admission",
-       fun the_knob_still_moves_block_admission/0}]}.
+      {"The budget is what this node admits blocks by, on every network",
+       fun budget_agrees_with_block_admission_on_every_network/0},
+      {"The budget does not move when the knob is set on a network that fixes it",
+       fun budget_is_immune_to_the_knob_on_a_fixed_network/0},
+      {"The budget is the configured limit where the network leaves it open",
+       fun budget_follows_the_knob_on_a_configurable_network/0}]}.
+
+%% Resolution is mocked - see resolve_network_id/0 in aec_governance. The
+%% read-back is not decoration: the eunit VM is started with -network_id
+%% local_<protocol>_testnet, which is a configurable id, so a mock that failed
+%% to take would leave the fixed-network cases silently exercising the other
+%% lane and passing for the wrong reason.
+with_network_id(NetworkId, Fun) ->
+    meck:expect(aec_governance, resolve_network_id, 0, NetworkId),
+    ok = aec_governance:clear_network_id_cache(),
+    ?assertEqual(NetworkId, aec_governance:get_network_id()),
+    Fun().
 
 budget_is_historical_at_lima() ->
     ok = application:unset_env(aecore, block_gas_limit),
-    ?assertEqual(?HISTORICAL_BLOCK_GAS_LIMIT, fork_gas_limit(?LIMA_PROTOCOL_VSN)).
+    [ with_network_id(
+        NetworkId,
+        fun() ->
+                ?assertEqual({NetworkId, ?HISTORICAL_BLOCK_GAS_LIMIT},
+                             {NetworkId, fork_gas_limit(?LIMA_PROTOCOL_VSN)})
+        end)
+      || NetworkId <- ?FIXED_NETWORK_IDS ++ ?CONFIGURABLE_NETWORK_IDS ].
 
 %% apply/3 only reaches this function at Lima today, but the function is not
 %% Lima-specific and the next fork that ships contracts will land on it.
 budget_is_historical_at_every_protocol() ->
     ok = application:unset_env(aecore, block_gas_limit),
-    [?assertEqual({P, ?HISTORICAL_BLOCK_GAS_LIMIT}, {P, fork_gas_limit(P)})
-     || P <- ?ALL_PROTOCOLS].
+    [ with_network_id(
+        NetworkId,
+        fun() ->
+                [?assertEqual({NetworkId, P, ?HISTORICAL_BLOCK_GAS_LIMIT},
+                              {NetworkId, P, fork_gas_limit(P)})
+                 || P <- ?ALL_PROTOCOLS]
+        end)
+      || NetworkId <- ?FIXED_NETWORK_IDS ++ ?CONFIGURABLE_NETWORK_IDS ].
 
-%% The replay-identity claim for this call site, as a test: with the knob
-%% unset - i.e. on every correctly-configured node - the patched budget is the
-%% same number the unpatched one produced, so no historical fork transition
-%% moves.
-budget_agrees_with_the_default_configured_node() ->
-    ok = application:unset_env(aecore, block_gas_limit),
-    [?assertEqual({P, aec_governance:block_gas_limit()}, {P, fork_gas_limit(P)})
-     || P <- ?ALL_PROTOCOLS].
+%% The replay-identity claim for this call site, as a test. The number a fork
+%% transition budgets is the number this node admits blocks by, on every
+%% network and whatever is configured - which on a node that started is the
+%% number the unpatched tree produced from application:get_env, so no
+%% historical fork transition moves.
+budget_agrees_with_block_admission_on_every_network() ->
+    [ with_network_id(
+        NetworkId,
+        fun() ->
+                ok = restore_env(block_gas_limit, Configured),
+                [?assertEqual({NetworkId, Configured, P,
+                               aec_governance:block_gas_limit()},
+                              {NetworkId, Configured, P, fork_gas_limit(P)})
+                 || P <- ?ALL_PROTOCOLS]
+        end)
+      || NetworkId  <- ?FIXED_NETWORK_IDS ++ ?CONFIGURABLE_NETWORK_IDS,
+         Configured <- [undefined, {ok, ?OVERRIDE_BLOCK_GAS_LIMIT}] ].
 
-%% The red witness. On the unpatched tree every row here answers
-%% ?OVERRIDE_BLOCK_GAS_LIMIT, and 1234 is below any fork contract's init cost
-%% - so on that tree the create fails on this node and succeeds everywhere
-%% else, which is the divergence itself rather than a proxy for it.
-budget_is_immune_to_the_knob() ->
-    ok = application:unset_env(aecore, block_gas_limit),
-    Unset = [{P, fork_gas_limit(P)} || P <- ?ALL_PROTOCOLS],
-    ok = application:set_env(aecore, block_gas_limit, ?OVERRIDE_BLOCK_GAS_LIMIT),
-    Overridden = [{P, fork_gas_limit(P)} || P <- ?ALL_PROTOCOLS],
-    ?assertEqual(Unset, Overridden).
+%% The red witness. aec_governance:check_block_gas_limit/1 refuses to start a
+%% node configured this way, but it runs once at boot - so the override here is
+%% the one that arrives afterwards, from a remote shell. Without the network
+%% test at the read site every row answers ?OVERRIDE_BLOCK_GAS_LIMIT, and 1234
+%% is below any fork contract's init cost - so on that node the create fails
+%% and succeeds everywhere else, which is the divergence itself rather than a
+%% proxy for it.
+budget_is_immune_to_the_knob_on_a_fixed_network() ->
+    [ with_network_id(
+        NetworkId,
+        fun() ->
+                ok = application:unset_env(aecore, block_gas_limit),
+                Unset = [{P, fork_gas_limit(P)} || P <- ?ALL_PROTOCOLS],
+                ok = application:set_env(aecore, block_gas_limit,
+                                         ?OVERRIDE_BLOCK_GAS_LIMIT),
+                Overridden = [{P, fork_gas_limit(P)} || P <- ?ALL_PROTOCOLS],
+                ?assertEqual({NetworkId, Unset}, {NetworkId, Overridden}),
+                [?assertEqual({NetworkId, P, ?HISTORICAL_BLOCK_GAS_LIMIT},
+                              {NetworkId, P, Limit}) || {P, Limit} <- Overridden]
+        end)
+      || NetworkId <- ?FIXED_NETWORK_IDS ].
 
-%% Control. Without it the cases above would also pass on a node where the
-%% knob had stopped working altogether, which is a different bug with the same
-%% symptom.
-the_knob_still_moves_block_admission() ->
-    ok = application:set_env(aecore, block_gas_limit, ?OVERRIDE_BLOCK_GAS_LIMIT),
-    ?assertEqual(?OVERRIDE_BLOCK_GAS_LIMIT, aec_governance:block_gas_limit()),
-    ?assertNotEqual(aec_governance:block_gas_limit(),
-                    aec_governance:block_gas_limit(?LIMA_PROTOCOL_VSN)).
+%% The other red witness, and the control for the one above: the knob is real,
+%% and where the network leaves the limit to its own nodes it moves the fork
+%% budget with it. Before the read-site test every row here answered
+%% ?HISTORICAL_BLOCK_GAS_LIMIT while the node ran on ?OVERRIDE_BLOCK_GAS_LIMIT.
+budget_follows_the_knob_on_a_configurable_network() ->
+    [ with_network_id(
+        NetworkId,
+        fun() ->
+                ok = application:set_env(aecore, block_gas_limit,
+                                         ?OVERRIDE_BLOCK_GAS_LIMIT),
+                ?assertEqual(?OVERRIDE_BLOCK_GAS_LIMIT,
+                             aec_governance:block_gas_limit()),
+                [?assertEqual({NetworkId, P, ?OVERRIDE_BLOCK_GAS_LIMIT},
+                              {NetworkId, P, fork_gas_limit(P)})
+                 || P <- ?ALL_PROTOCOLS]
+        end)
+      || NetworkId <- ?CONFIGURABLE_NETWORK_IDS ].
 
 %% The gas price is read from the same TxEnv on the line below the gas limit
 %% and is asserted alongside it, so a change that dimensioned the limit by

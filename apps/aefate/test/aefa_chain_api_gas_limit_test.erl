@@ -2,9 +2,14 @@
 %%% @copyright (C) 2026, Aeternity Anstalt
 %%% @doc
 %%%    Regression tests for the FATE GASLIMIT opcode (Chain.block_gas_limit).
-%%%    Its value reaches the state root, so it may not follow the operator's
-%%%    `aecore` `block_gas_limit` knob. Pinned: the historical 6,000,000, the
-%%%    knob, and that no path from the opcode reaches application:get_env.
+%%%    Its value reaches the state root, so it follows the network's limit and
+%%%    never one node's opinion of it: on a network in
+%%%    ?FIXED_BLOCK_GAS_LIMIT_NETWORKS the operator's `aecore`
+%%%    `block_gas_limit` knob moves nothing, and on a network that leaves the
+%%%    limit to its own nodes the opcode and block admission move together.
+%%%    Pinned: the historical 6,000,000, both sides of that test, and that
+%%%    nothing between the opcode and aec_governance reads configuration on its
+%%%    own account.
 %%% @end
 %%%-------------------------------------------------------------------
 -module(aefa_chain_api_gas_limit_test).
@@ -40,45 +45,120 @@
 %% like a rounding of the right one.
 -define(OVERRIDE_BLOCK_GAS_LIMIT, 1234567).
 
+%% The networks whose limit is the network's, not the operator's - the list
+%% aec_governance tests at both read sites. Written out rather than read from
+%% there: the macro is module-local, and a patch that shortens the list has to
+%% edit this line rather than quietly take these cases with it.
+-define(FIXED_NETWORK_IDS, [<<"ae_mainnet">>, <<"ae_uat">>]).
+
+%% ae_dev is the node's own configurable network; the second stands in for a
+%% hyperchain, whose ids this module cannot know.
+-define(CONFIGURABLE_NETWORK_IDS, [<<"ae_dev">>, <<"nw_id_for_testing">>]).
+
 %%%===================================================================
 %%% (a) + (b) The opcode's value, end to end through aefa_fate_op
 %%%===================================================================
 
 gas_limit_opcode_test_() ->
     {foreach,
-     fun() -> application:get_env(aecore, block_gas_limit) end,
-     fun(Saved) -> restore_env(block_gas_limit, Saved) end,
+     fun() ->
+             Saved = application:get_env(aecore, block_gas_limit),
+             ok = aec_governance:clear_network_id_cache(),
+             meck:new(aec_governance, [passthrough]),
+             Saved
+     end,
+     fun(Saved) ->
+             %% Cleared first: a throw from meck:unload/1 must not leave a
+             %% pinned test id behind for the rest of the eunit VM.
+             ok = aec_governance:clear_network_id_cache(),
+             meck:unload(aec_governance),
+             restore_env(block_gas_limit, Saved)
+     end,
      [{"GASLIMIT is the historical value at every protocol version",
        fun opcode_is_historical_at_every_protocol/0},
-      {"GASLIMIT does not move when the aecore knob is set",
-       fun opcode_is_immune_to_the_knob/0},
-      {"The knob is real: it still moves block admission",
-       fun the_knob_still_moves_block_admission/0}]}.
+      {"GASLIMIT does not move when the knob is set on a network that fixes it",
+       fun opcode_is_immune_to_the_knob_on_a_fixed_network/0},
+      {"GASLIMIT is the configured limit where the network leaves it open",
+       fun opcode_follows_the_knob_on_a_configurable_network/0},
+      {"The knob is real: it moves the opcode and block admission together",
+       fun the_knob_moves_both_read_sites_together/0}]}.
+
+%% Resolution is mocked - see resolve_network_id/0 in aec_governance. The
+%% read-back is not decoration: the eunit VM is started with -network_id
+%% local_<protocol>_testnet, which is a configurable id, so a mock that failed
+%% to take would leave the fixed-network cases silently exercising the other
+%% lane and passing for the wrong reason.
+with_network_id(NetworkId, Fun) ->
+    meck:expect(aec_governance, resolve_network_id, 0, NetworkId),
+    ok = aec_governance:clear_network_id_cache(),
+    ?assertEqual(NetworkId, aec_governance:get_network_id()),
+    Fun().
 
 opcode_is_historical_at_every_protocol() ->
     ok = application:unset_env(aecore, block_gas_limit),
-    [?assertEqual({Protocol, aeb_fate_data:make_integer(?HISTORICAL_BLOCK_GAS_LIMIT)},
-                  {Protocol, gaslimit_opcode(Protocol)})
-     || Protocol <- ?ALL_PROTOCOLS].
+    [ with_network_id(
+        NetworkId,
+        fun() ->
+                [?assertEqual({NetworkId, Protocol,
+                               aeb_fate_data:make_integer(?HISTORICAL_BLOCK_GAS_LIMIT)},
+                              {NetworkId, Protocol, gaslimit_opcode(Protocol)})
+                 || Protocol <- ?ALL_PROTOCOLS]
+        end)
+      || NetworkId <- ?FIXED_NETWORK_IDS ++ ?CONFIGURABLE_NETWORK_IDS ].
 
-%% The red witness. On the unpatched tree every row here answers
-%% ?OVERRIDE_BLOCK_GAS_LIMIT.
-opcode_is_immune_to_the_knob() ->
-    ok = application:unset_env(aecore, block_gas_limit),
-    Unset = [gaslimit_opcode(P) || P <- ?ALL_PROTOCOLS],
-    ok = application:set_env(aecore, block_gas_limit, ?OVERRIDE_BLOCK_GAS_LIMIT),
-    Overridden = [gaslimit_opcode(P) || P <- ?ALL_PROTOCOLS],
-    ?assertEqual(lists:zip(?ALL_PROTOCOLS, Unset),
-                 lists:zip(?ALL_PROTOCOLS, Overridden)).
+%% The red witness. aec_governance:check_block_gas_limit/1 refuses to start a
+%% node configured this way, but it runs once at boot - so the override here is
+%% the one that arrives afterwards, from a remote shell. Without the network
+%% test at the read site every row answers ?OVERRIDE_BLOCK_GAS_LIMIT.
+opcode_is_immune_to_the_knob_on_a_fixed_network() ->
+    [ with_network_id(
+        NetworkId,
+        fun() ->
+                ok = application:unset_env(aecore, block_gas_limit),
+                Unset = [gaslimit_opcode(P) || P <- ?ALL_PROTOCOLS],
+                ok = application:set_env(aecore, block_gas_limit,
+                                         ?OVERRIDE_BLOCK_GAS_LIMIT),
+                Overridden = [gaslimit_opcode(P) || P <- ?ALL_PROTOCOLS],
+                ?assertEqual({NetworkId, lists:zip(?ALL_PROTOCOLS, Unset)},
+                             {NetworkId, lists:zip(?ALL_PROTOCOLS, Overridden)}),
+                ?assertEqual(aeb_fate_data:make_integer(?HISTORICAL_BLOCK_GAS_LIMIT),
+                             hd(Overridden))
+        end)
+      || NetworkId <- ?FIXED_NETWORK_IDS ].
 
-%% Control. Without it the two tests above would also pass on a node where
-%% the knob had stopped working altogether, which is a different bug with the
-%% same symptom - and would wrongly read as "the knob was removed".
-the_knob_still_moves_block_admission() ->
-    ok = application:set_env(aecore, block_gas_limit, ?OVERRIDE_BLOCK_GAS_LIMIT),
-    ?assertEqual(?OVERRIDE_BLOCK_GAS_LIMIT, aec_governance:block_gas_limit()),
-    ?assertNotEqual(aec_governance:block_gas_limit(),
-                    aec_governance:block_gas_limit(?CERES_PROTOCOL_VSN)).
+%% The other red witness. Where the limit is that deployment's own, a contract
+%% asking for it must be told the number its own nodes admit blocks by. Before
+%% the read-site test every row here answered ?HISTORICAL_BLOCK_GAS_LIMIT while
+%% the node ran on ?OVERRIDE_BLOCK_GAS_LIMIT.
+opcode_follows_the_knob_on_a_configurable_network() ->
+    [ with_network_id(
+        NetworkId,
+        fun() ->
+                ok = application:set_env(aecore, block_gas_limit,
+                                         ?OVERRIDE_BLOCK_GAS_LIMIT),
+                [?assertEqual({NetworkId, Protocol,
+                               aeb_fate_data:make_integer(?OVERRIDE_BLOCK_GAS_LIMIT)},
+                              {NetworkId, Protocol, gaslimit_opcode(Protocol)})
+                 || Protocol <- ?ALL_PROTOCOLS]
+        end)
+      || NetworkId <- ?CONFIGURABLE_NETWORK_IDS ].
+
+%% Control. Without it the two cases above would also pass on a node where the
+%% knob had stopped working altogether, which is a different bug with the same
+%% symptom - and would wrongly read as "the knob was removed". What it pins is
+%% the property the opcode's safety now rests on: the number a contract is told
+%% and the number the node admits blocks by are the same read.
+the_knob_moves_both_read_sites_together() ->
+    [ with_network_id(
+        NetworkId,
+        fun() ->
+                ok = application:set_env(aecore, block_gas_limit,
+                                         ?OVERRIDE_BLOCK_GAS_LIMIT),
+                Admission = aec_governance:block_gas_limit(),
+                ?assertEqual({NetworkId, aeb_fate_data:make_integer(Admission)},
+                             {NetworkId, gaslimit_opcode(?CERES_PROTOCOL_VSN)})
+        end)
+      || NetworkId <- ?FIXED_NETWORK_IDS ++ ?CONFIGURABLE_NETWORK_IDS ].
 
 %% Through the real opcode, not aefa_chain_api:gas_limit/1 directly: the
 %% opcode is what a contract executes, and it is the wiring between the two
@@ -120,8 +200,19 @@ restore_env(Key, {ok, Value}) ->
     application:set_env(aecore, Key, Value).
 
 %%%===================================================================
-%%% (c) No configuration read on any path. Walks the compiled call graph
-%%% rather than setting one value, so it holds for every future edit too.
+%%% (c) Nothing between the opcode and aec_governance reads configuration on
+%%% its own account. Walks the compiled call graph rather than setting one
+%%% value, so it holds for every future edit too.
+%%%
+%%% This used to assert that NO configuration is reachable from the opcode at
+%%% all. That is no longer the invariant and asserting it would be a lie: on a
+%%% network that leaves the limit to its own nodes, the limit IS configuration,
+%%% deliberately. aec_governance is therefore a leaf here - which side of
+%%% ?FIXED_BLOCK_GAS_LIMIT_NETWORKS a network falls on is aec_governance_tests'
+%%% subject, and both_arities_are_one_closure_test/0 there is where "the opcode
+%%% cannot drift from block admission" is proven off the beams. What this
+%%% module still owns is that the FATE path reaches the limit only through the
+%%% consensus arity and adds no configuration of its own on the way.
 %%%===================================================================
 
 %% Reading configuration, as opposed to reading a constant. get_env is the
@@ -144,14 +235,18 @@ restore_env(Key, {ok, Value}) ->
 %% real constraint; today it is 7. Exceeding it aborts rather than truncates.
 -define(WALK_LIMIT, 500).
 
-no_config_read_on_any_path_test() ->
+no_config_read_between_the_opcode_and_the_limit_test() ->
     Reached = reachable_from({aefa_chain_api, gas_limit, 1}),
     ?assertEqual([], [MFA || MFA <- Reached, lists:member(MFA, ?CONFIG_READS)]),
     %% The walk has to have walked. A closure that collapsed to nothing - an
     %% unreadable beam, a call form this module does not recognise - would
     %% satisfy the assertion above while proving nothing at all.
     ?assert(lists:member({aec_governance, block_gas_limit, 1}, Reached)),
-    ?assert(lists:member({aetx_env, consensus_version, 1}, Reached)).
+    ?assert(lists:member({aetx_env, consensus_version, 1}, Reached)),
+    %% The node-local arity is the same closure today, so taking it would give
+    %% the same number - but it takes no protocol, and a repricing clause added
+    %% above the catch-all would then reach every read site except this one.
+    ?assertNot(lists:member({aec_governance, block_gas_limit, 0}, Reached)).
 
 reachable_from(Root) ->
     walk([Root], sets:new(), 0).
@@ -166,11 +261,14 @@ walk([MFA | Rest], Seen, N) ->
         false -> walk(callees(MFA) ++ Rest, sets:add_element(MFA, Seen), N + 1)
     end.
 
-%% Leaves. They are recorded in the visited set (so the assertion above sees
+%% Leaves. They are recorded in the visited set (so the assertions above see
 %% them) but not descended into: erlang is preloaded and has no beam to read,
-%% and application is the thing being looked for, not a place to search.
-callees({erlang, _, _})     -> [];
-callees({application, _, _}) -> [];
+%% application is the thing being looked for rather than a place to search,
+%% and aec_governance is the boundary this walk stops at - see the section
+%% comment above.
+callees({erlang, _, _})        -> [];
+callees({application, _, _})   -> [];
+callees({aec_governance, _, _}) -> [];
 callees({M, F, A}) ->
     case code:which(M) of
         Path when is_list(Path) ->

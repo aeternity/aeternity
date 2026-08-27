@@ -1,7 +1,8 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2026, Aeternity Anstalt
-%%% @doc Tests for the caching of the network id, and for the split between
-%%%      the node-local and the consensus-visible block gas limit.
+%%% @doc Tests for the caching of the network id, and for the block gas limit
+%%%      the network id decides - both arities of it, which is the point:
+%%%      block admission and Chain.block_gas_limit are one number per network.
 %%%-------------------------------------------------------------------
 
 -module(aec_governance_tests).
@@ -256,8 +257,10 @@ override_allowed_on_other_networks() ->
     ?assertEqual(ok, ?TEST_MODULE:ensure_env()),
     ?assertEqual(Override, ?TEST_MODULE:block_gas_limit()).
 %%%===================================================================
-%%% Block gas limit: /0 is the operator's admission knob and stays
-%%% configurable; /1 reaches the state root and must not follow configuration.
+%%% Block gas limit. ?FIXED_BLOCK_GAS_LIMIT_NETWORKS is the read-site test for
+%%% both arities: on a network that fixes the limit neither reads the
+%%% operator's env, and on one that does not both read it. What the node
+%%% admits and what a contract is told are therefore the same number, always.
 %%%===================================================================
 
 %% Written out rather than derived from ?BLOCK_GAS_LIMIT (module-local to
@@ -265,6 +268,10 @@ override_allowed_on_other_networks() ->
 %% node has computed for all of history, and a patch that moves it has to
 %% restate it here.
 -define(HISTORICAL_BLOCK_GAS_LIMIT, 6000000).
+
+%% Networks that leave the limit to their operators. ae_dev is the node's own;
+%% the other two stand in for a hyperchain, whose ids this module cannot know.
+-define(CONFIGURABLE_NETWORK_IDS, [<<"ae_dev">>, ?NW_ID_A, ?NW_ID_B]).
 
 %% Deliberately not aec_hard_forks:sorted_protocol_versions/0 - that returns
 %% only the protocols the eunit VM's network id enables, so a single-protocol
@@ -283,44 +290,214 @@ override_allowed_on_other_networks() ->
 
 block_gas_limit_test_() ->
     {foreach,
-     fun() -> application:get_env(aecore, block_gas_limit) end,
-     fun(Saved) -> restore_env(block_gas_limit, Saved) end,
-     [{"The consensus-visible limit is the historical value at every protocol",
-       fun consensus_block_gas_limit_is_historical/0},
-      {"...and does not move when the node-local knob is set",
-       fun consensus_block_gas_limit_ignores_the_knob/0},
-      {"The node-local knob still follows the configuration",
-       fun node_local_block_gas_limit_follows_the_knob/0},
+     fun() ->
+             %% the_patch_moves_nothing_a_started_node_reads/0 reaches the
+             %% refusal, and the refusal logs before it raises.
+             aec_test_utils:ensure_system_init(),
+             Saved = application:get_env(aecore, block_gas_limit),
+             ok = ?TEST_MODULE:clear_network_id_cache(),
+             meck:new(?TEST_MODULE, [passthrough]),
+             Saved
+     end,
+     fun(Saved) ->
+             ok = ?TEST_MODULE:clear_network_id_cache(),
+             meck:unload(?TEST_MODULE),
+             restore_env(block_gas_limit, Saved)
+     end,
+     [{"With nothing configured the limit is the historical value everywhere",
+       fun block_gas_limit_is_historical_unconfigured/0},
+      {"A network that fixes the limit ignores an override set after boot",
+       fun runtime_override_moves_neither_arity_on_a_fixed_network/0},
+      {"A network that does not fix it moves both arities together",
+       fun both_arities_follow_the_knob_on_a_configurable_network/0},
+      {"The two arities agree on every network, configured or not",
+       fun both_arities_agree_on_every_network/0},
+      {"A node that started reads what it read before this change",
+       fun the_patch_moves_nothing_a_started_node_reads/0},
       {"Every protocol version has a clause",
        fun consensus_block_gas_limit_is_total/0}]}.
 
-consensus_block_gas_limit_is_historical() ->
-    ok = application:unset_env(aecore, block_gas_limit),
-    [?assertEqual({Protocol, ?HISTORICAL_BLOCK_GAS_LIMIT},
-                  {Protocol, ?TEST_MODULE:block_gas_limit(Protocol)})
-     || Protocol <- ?ALL_PROTOCOLS].
+all_network_ids() ->
+    fixed_limit_network_ids() ++ ?CONFIGURABLE_NETWORK_IDS.
 
-consensus_block_gas_limit_ignores_the_knob() ->
-    ok = application:set_env(aecore, block_gas_limit, ?OVERRIDE_BLOCK_GAS_LIMIT),
-    [?assertEqual({Protocol, ?HISTORICAL_BLOCK_GAS_LIMIT},
-                  {Protocol, ?TEST_MODULE:block_gas_limit(Protocol)})
-     || Protocol <- ?ALL_PROTOCOLS].
+%% Resolution is mocked, and the read-back is not decoration: the eunit VM is
+%% started with -network_id local_<protocol>_testnet, which is a configurable
+%% id, so a mock that failed to take would leave every case below silently
+%% exercising the one lane it is trying to tell apart from the other.
+with_network_id(NetworkId, Fun) ->
+    set_resolved_network_id(NetworkId),
+    ok = ?TEST_MODULE:clear_network_id_cache(),
+    ?assertEqual(NetworkId, ?TEST_MODULE:get_network_id()),
+    Fun().
 
-%% Pinned on purpose: leaving block admission configurable is the decision,
-%% not an oversight. A patch that makes /0 config-immune too breaks hyperchains
-%% and should have to say so here.
-node_local_block_gas_limit_follows_the_knob() ->
+block_gas_limit_is_historical_unconfigured() ->
     ok = application:unset_env(aecore, block_gas_limit),
-    ?assertEqual(?HISTORICAL_BLOCK_GAS_LIMIT, ?TEST_MODULE:block_gas_limit()),
-    ok = application:set_env(aecore, block_gas_limit, ?OVERRIDE_BLOCK_GAS_LIMIT),
-    ?assertEqual(?OVERRIDE_BLOCK_GAS_LIMIT, ?TEST_MODULE:block_gas_limit()).
+    [ with_network_id(
+        NetworkId,
+        fun() ->
+                ?assertEqual({NetworkId, ?HISTORICAL_BLOCK_GAS_LIMIT},
+                             {NetworkId, ?TEST_MODULE:block_gas_limit()}),
+                [?assertEqual({NetworkId, Protocol, ?HISTORICAL_BLOCK_GAS_LIMIT},
+                              {NetworkId, Protocol,
+                               ?TEST_MODULE:block_gas_limit(Protocol)})
+                 || Protocol <- ?ALL_PROTOCOLS]
+        end)
+      || NetworkId <- all_network_ids() ].
+
+%% The red witness for the read-site test. check_block_gas_limit/1 runs once, at
+%% boot; this override arrives after it, which is exactly what a remote shell
+%% does - and what the branch's own aehttp_integration_SUITE helper
+%% assert_node_settings_block_gas_limit_live/3 does to a running node. Without
+%% the test at the read site, block_gas_limit/0 answers ?OVERRIDE_BLOCK_GAS_LIMIT
+%% here and this node admits micro blocks no other ae_mainnet node would.
+runtime_override_moves_neither_arity_on_a_fixed_network() ->
+    [ with_network_id(
+        NetworkId,
+        fun() ->
+                ok = application:unset_env(aecore, block_gas_limit),
+                %% The node starts, because at boot nothing was overriding.
+                ?assertEqual(ok, ?TEST_MODULE:ensure_env()),
+                ok = application:set_env(aecore, block_gas_limit,
+                                         ?OVERRIDE_BLOCK_GAS_LIMIT),
+                ?assertEqual({NetworkId, ?HISTORICAL_BLOCK_GAS_LIMIT},
+                             {NetworkId, ?TEST_MODULE:block_gas_limit()}),
+                [?assertEqual({NetworkId, Protocol, ?HISTORICAL_BLOCK_GAS_LIMIT},
+                              {NetworkId, Protocol,
+                               ?TEST_MODULE:block_gas_limit(Protocol)})
+                 || Protocol <- ?ALL_PROTOCOLS]
+        end)
+      || NetworkId <- fixed_limit_network_ids() ].
+
+%% The other red witness. Before the read-site test block_gas_limit/1 answered
+%% ?HISTORICAL_BLOCK_GAS_LIMIT here while the node admitted blocks up to
+%% ?OVERRIDE_BLOCK_GAS_LIMIT - a deployment whose contracts are told a limit
+%% its own nodes do not use.
+both_arities_follow_the_knob_on_a_configurable_network() ->
+    [ with_network_id(
+        NetworkId,
+        fun() ->
+                ok = application:set_env(aecore, block_gas_limit,
+                                         ?OVERRIDE_BLOCK_GAS_LIMIT),
+                ?assertEqual({NetworkId, ?OVERRIDE_BLOCK_GAS_LIMIT},
+                             {NetworkId, ?TEST_MODULE:block_gas_limit()}),
+                [?assertEqual({NetworkId, Protocol, ?OVERRIDE_BLOCK_GAS_LIMIT},
+                              {NetworkId, Protocol,
+                               ?TEST_MODULE:block_gas_limit(Protocol)})
+                 || Protocol <- ?ALL_PROTOCOLS]
+        end)
+      || NetworkId <- ?CONFIGURABLE_NETWORK_IDS ].
+
+%% The property itself, stated without naming which side of the test a network
+%% falls on: one value per network, whatever is configured and whatever
+%% protocol is asking.
+both_arities_agree_on_every_network() ->
+    [ with_network_id(
+        NetworkId,
+        fun() ->
+                ok = restore_env(block_gas_limit, Configured),
+                [?assertEqual({NetworkId, Configured, Protocol,
+                               ?TEST_MODULE:block_gas_limit()},
+                              {NetworkId, Configured, Protocol,
+                               ?TEST_MODULE:block_gas_limit(Protocol)})
+                 || Protocol <- ?ALL_PROTOCOLS]
+        end)
+      || NetworkId  <- all_network_ids(),
+         Configured <- configurations() ].
+
+%% Replay identity as a test rather than a claim in a commit message. The
+%% pre-change block_gas_limit/0 was application:get_env(aecore, block_gas_limit,
+%% ?BLOCK_GAS_LIMIT) and nothing else, so it is evaluated here rather than
+%% recalled. On a node that started, both arities now return that number: on the
+%% fixed networks because starting at all is what proves the env equals
+%% ?BLOCK_GAS_LIMIT, everywhere else because the env is what they read.
+the_patch_moves_nothing_a_started_node_reads() ->
+    [ with_network_id(
+        NetworkId,
+        fun() ->
+                ok = restore_env(block_gas_limit, Configured),
+                Before = application:get_env(aecore, block_gas_limit,
+                                             ?HISTORICAL_BLOCK_GAS_LIMIT),
+                case node_starts() of
+                    true ->
+                        ?assertEqual({NetworkId, Configured, Before},
+                                     {NetworkId, Configured,
+                                      ?TEST_MODULE:block_gas_limit()}),
+                        [?assertEqual({NetworkId, Configured, Protocol, Before},
+                                      {NetworkId, Configured, Protocol,
+                                       ?TEST_MODULE:block_gas_limit(Protocol)})
+                         || Protocol <- ?ALL_PROTOCOLS];
+                    false ->
+                        %% The only node that can be: one on a network that
+                        %% fixes the limit, told to run its own. It reads
+                        %% nothing, because it does not start.
+                        ?assert(lists:member(NetworkId, fixed_limit_network_ids())),
+                        ?assertNotEqual(?HISTORICAL_BLOCK_GAS_LIMIT, Before)
+                end
+        end)
+      || NetworkId  <- all_network_ids(),
+         Configured <- configurations() ].
+
+configurations() ->
+    [undefined,
+     {ok, ?HISTORICAL_BLOCK_GAS_LIMIT},
+     {ok, ?OVERRIDE_BLOCK_GAS_LIMIT}].
+
+node_starts() ->
+    try ?TEST_MODULE:ensure_env() of
+        ok -> true
+    catch
+        error:{block_gas_limit_override_would_fork, _} -> false
+    end.
 
 %% A clause set closed at the newest named protocol would crash the node the
 %% day the next one is added, which is the failure mode a "pin it at every
-%% protocol" change most easily introduces.
+%% protocol" change most easily introduces. Read on a network that fixes the
+%% limit, with the knob set, so a clause that fell through to the env would be
+%% visible here rather than answering the right number for the wrong reason.
 consensus_block_gas_limit_is_total() ->
     Unknown = lists:max(?ALL_PROTOCOLS) + 1,
-    ?assertEqual(?HISTORICAL_BLOCK_GAS_LIMIT, ?TEST_MODULE:block_gas_limit(Unknown)).
+    with_network_id(
+      <<"ae_mainnet">>,
+      fun() ->
+              ok = application:set_env(aecore, block_gas_limit,
+                                       ?OVERRIDE_BLOCK_GAS_LIMIT),
+              ?assertEqual(?HISTORICAL_BLOCK_GAS_LIMIT,
+                           ?TEST_MODULE:block_gas_limit(Unknown))
+      end).
+
+%% Structural, off the compiled beam. The cases above can only speak for the
+%% network ids they name; this one speaks for every id there will ever be: the
+%% two arities are one closure, so no future edit can give one of them a test
+%% the other does not have. Runs outside the fixture above on purpose - under
+%% meck the module's beam is not the one code:which/1 points at.
+both_arities_are_one_closure_test() ->
+    NodeLocal = direct_callees({?TEST_MODULE, block_gas_limit, 0}),
+    Consensus = direct_callees({?TEST_MODULE, block_gas_limit, 1}),
+    %% A read that collapsed to nothing - an unreadable beam, a call form this
+    %% module does not recognise - would satisfy the equality while proving
+    %% nothing at all.
+    ?assertNotEqual([], NodeLocal),
+    ?assertEqual(NodeLocal, Consensus).
+
+direct_callees({M, F, A}) ->
+    case code:which(M) of
+        Path when is_list(Path) ->
+            {beam_file, _, _, _, _, Fs} = beam_disasm:file(Path),
+            case [Code || {function, Fn, Ar, _, Code} <- Fs, Fn =:= F, Ar =:= A] of
+                [Code] -> lists:usort(lists:flatmap(fun call_target/1, Code));
+                []     -> erlang:error({no_such_function, {M, F, A}})
+            end;
+        NoBeam ->
+            erlang:error({cannot_disassemble, M, NoBeam})
+    end.
+
+call_target({call, _, MFA})                             -> [MFA];
+call_target({call_only, _, MFA})                        -> [MFA];
+call_target({call_last, _, MFA, _})                     -> [MFA];
+call_target({call_ext, _, {extfunc, M, F, A}})          -> [{M, F, A}];
+call_target({call_ext_only, _, {extfunc, M, F, A}})     -> [{M, F, A}];
+call_target({call_ext_last, _, {extfunc, M, F, A}, _})  -> [{M, F, A}];
+call_target(_)                                          -> [].
 
 restore_env(Key, undefined) ->
     application:unset_env(aecore, Key);

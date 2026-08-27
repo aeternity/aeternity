@@ -83,9 +83,13 @@
 %% But we can improve and use 6 million (this allows reasonable
 %% size contracts to fit in a microblock at all)
 -define(BLOCK_GAS_LIMIT, 6000000).
-%% Networks whose block gas limit is the network's, not the operator's - see
-%% check_block_gas_limit/1. Hyperchains and ae_dev are left configurable: their
-%% limit is a property of that deployment, agreed among its own nodes.
+%% Networks whose block gas limit is the network's, not the operator's. This is
+%% the read-site test - network_block_gas_limit/0 consults it on every read, so
+%% an override is inert on these networks whenever it is set. check_block_gas_limit/1
+%% additionally refuses to start a node that configures one, rather than letting
+%% it run on a value it would silently ignore. Hyperchains and ae_dev are left
+%% configurable: their limit is a property of that deployment, agreed among its
+%% own nodes.
 -define(FIXED_BLOCK_GAS_LIMIT_NETWORKS, [<<"ae_mainnet">>, <<"ae_uat">>]).
 -define(TX_BASE_GAS, 15000).
 %% Gas for 1 byte of a serialized tx.
@@ -130,17 +134,31 @@ block_mine_reward(Height) when is_integer(Height), Height > 0 ->
 %% In Ethereum, block gas limit is changed in every block. The new block gas
 %% limit is decided by algorithm and vote by miners.
 %%
-%% Node-local admission knob. Anything whose result reaches the state root
-%% reads block_gas_limit/1 instead.
+%% Block admission: aec_blocks:validate_gas_limit/1 and the micro block
+%% candidate. Same value as block_gas_limit/1 on every network id, so what this
+%% node admits can never disagree with what a contract is told.
 block_gas_limit() ->
-    application:get_env(aecore, block_gas_limit, ?BLOCK_GAS_LIMIT).
+    network_block_gas_limit().
 
 -spec block_gas_limit(aec_hard_forks:protocol_vsn()) -> non_neg_integer().
-%% Consensus-visible: the FATE and AEVM GASLIMIT opcodes return this, so it
-%% must never read the operator's env. The clause below is an open catch-all,
-%% so a repricing clause for a new protocol goes ABOVE it or it is dead.
+%% Consensus-visible: the FATE and AEVM GASLIMIT opcodes and the gas budget of
+%% every contract a fork transition creates return this. The clause below is an
+%% open catch-all, so a repricing clause for a new protocol goes ABOVE it or it
+%% is dead.
 block_gas_limit(Protocol) when Protocol >= ?ROMA_PROTOCOL_VSN ->
-    ?BLOCK_GAS_LIMIT.
+    network_block_gas_limit().
+
+%% The network decides, and it decides for both read sites at once. On a network
+%% that fixes the limit the operator's env is not consulted at all, so a
+%% set_env/3 issued after the boot check in check_block_gas_limit/1 has already
+%% run - from a remote shell, or from a test - moves nothing. Everywhere else
+%% the limit belongs to that deployment and configuring it moves both sites
+%% together.
+network_block_gas_limit() ->
+    case lists:member(?MODULE:get_network_id(), ?FIXED_BLOCK_GAS_LIMIT_NETWORKS) of
+        true  -> ?BLOCK_GAS_LIMIT;
+        false -> application:get_env(aecore, block_gas_limit, ?BLOCK_GAS_LIMIT)
+    end.
 
 min_tx_gas() -> ?TX_BASE_GAS.
 
@@ -515,8 +533,10 @@ ensure_env() ->
     end.
 
 %% On a network whose limit is fixed for everyone, an override is not a local
-%% knob: it admits a different set of micro blocks and computes a different
-%% state root. Refuse to start. No fork - a node not overriding is unaffected.
+%% knob. network_block_gas_limit/0 already ignores it, so the node would run
+%% correctly while disagreeing with its own configuration - say so at boot
+%% instead of leaving the operator to discover it from a block it did not
+%% expect to admit. No fork either way: a node not overriding is unaffected.
 check_block_gas_limit(NetworkId) ->
     case lists:member(NetworkId, ?FIXED_BLOCK_GAS_LIMIT_NETWORKS) of
         false ->
@@ -530,8 +550,9 @@ check_block_gas_limit(NetworkId) ->
                                 "configured as ~p, but ~s fixes it at ~p. The "
                                 "value decides which micro blocks this node "
                                 "admits and what Chain.block_gas_limit returns "
-                                "to a contract, so a node running its own would "
-                                "fork off the network.",
+                                "to a contract, and on this network it is the "
+                                "network's, so the configured one would be "
+                                "ignored rather than honoured.",
                                 [Configured, NetworkId, ?BLOCK_GAS_LIMIT]),
                     error({block_gas_limit_override_would_fork,
                            #{network_id => NetworkId,
