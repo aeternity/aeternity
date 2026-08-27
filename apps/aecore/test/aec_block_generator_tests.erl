@@ -73,10 +73,6 @@ block_generator_failed_worker_backoff_test_() ->
        fun test_restart_after_stop_retries_immediately/0}]}.
 
 setup() ->
-    %% start_link/0 below links the generator to this process, and eunit cleanup does
-    %% not run when a test process is killed by an exit signal
-    process_flag(trap_exit, true),
-
     meck:new(aec_events, [non_strict]),
     meck:expect(aec_events, subscribe, fun(_) -> ok end),
     meck:expect(aec_events, publish, fun(_, _) -> ok end),
@@ -88,7 +84,10 @@ setup() ->
     meck:new(aec_blocks, [non_strict]),
     meck:expect(aec_blocks, txs, fun(_) -> [dummy_tx] end),
 
-    {ok, _Pid} = ?GENERATOR:start_link(),
+    %% Unlinked: a generator crash should fail the test that provoked it, not kill the
+    %% process eunit shares with every later test module
+    {ok, Pid} = ?GENERATOR:start_link(),
+    unlink(Pid),
     ok.
 
 teardown(_) ->

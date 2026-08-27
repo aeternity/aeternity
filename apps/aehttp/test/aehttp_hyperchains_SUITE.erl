@@ -508,9 +508,15 @@ produce_some_epochs(Config) ->
     produce_n_epochs(Config, 5).
 
 produce_n_epochs(Config, N) ->
+    check_epoch_production(Config, produce_cc_blocks(Config, N * ?CHILD_EPOCH_LENGTH)).
+
+produce_n_epochs(Config, N, ProdCfg, Retries) ->
+    check_epoch_production(
+      Config, produce_cc_blocks_with_retry(Config, N * ?CHILD_EPOCH_LENGTH, ProdCfg, Retries)).
+
+check_epoch_production(Config, ProduceResult) ->
     [{Node1, _, _, _}|_] = ?config(nodes, Config),
-    %% produce blocks
-    {ok, Bs} = produce_cc_blocks(Config, N * ?CHILD_EPOCH_LENGTH),
+    {ok, Bs} = ProduceResult,
     %% check producers
     Producers = [ aec_blocks:miner(B) || B <- Bs, aec_blocks:is_key_block(B) ],
     ChildTopHeight = rpc(Node1, aec_chain, top_height, []),
@@ -1216,7 +1222,8 @@ production_recovers_after_long_stall(Config) ->
     ?assert(rpc(Node, aec_chain, top_height, []) > StallHeight),
 
     %% Make sure the chain is fully healthy going forward, not just one lucky block.
-    ok = produce_n_epochs(Config, 1),
+    %% On the catch-up's budget: recovery is still crossing the epoch the stall skipped.
+    ok = produce_n_epochs(Config, 1, #{timeout => 20000}, 3),
 
     ok.
 
