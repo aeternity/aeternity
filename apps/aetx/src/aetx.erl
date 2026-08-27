@@ -41,6 +41,7 @@
         , tx_min_gas/2
         , tx_type/1
         , tx_types/0
+        , no_base_gas_tx_types/0
         ]).
 
 -ifdef(TEST).
@@ -293,14 +294,17 @@ gas_limit(#aetx{ type = paying_for_tx, cb = CB, size = Size, tx = Tx }, Height, 
     base_gas(paying_for_tx, Version) + size_gas(Size - ISize) + gas_limit(InnerTx, Height, Version);
 gas_limit(#aetx{type = Type, size = Size, cb = CB, tx = Tx}, _Height, Version) when ?IS_CONTRACT_TX(Type) ->
     base_gas(Type, Version, CB:abi_version(Tx)) + size_gas(Size) + CB:gas(Tx);
-gas_limit(#aetx{ type = Type, cb = CB, size = Size, tx = Tx }, _Height, Version) when
-      Type =/= channel_offchain_tx,
-      Type =/= channel_client_reconnect_tx ->
-    base_gas(Type, Version) + size_gas(Size) + CB:gas(Tx);
+%% No aec_governance:tx_base_gas/2 clause exists for these - see
+%% no_base_gas_tx_types/0. They have to be matched ahead of the catch-all below,
+%% which would otherwise route them into base_gas/2 and raise function_clause.
 gas_limit(#aetx{ type = channel_offchain_tx }, _Height, _Version) ->
     0;
 gas_limit(#aetx{ type = channel_client_reconnect_tx }, _Height, _Version) ->
-    0.
+    0;
+gas_limit(#aetx{ type = hc_vote_tx }, _Height, _Version) ->
+    0;
+gas_limit(#aetx{ type = Type, cb = CB, size = Size, tx = Tx }, _Height, Version) ->
+    base_gas(Type, Version) + size_gas(Size) + CB:gas(Tx).
 
 -spec used_gas(Tx :: tx(), Height :: aec_blocks:height(),
                Version :: aec_hard_forks:protocol_vsn(), Trees :: aec_trees:trees()) ->
@@ -364,7 +368,7 @@ min_gas_price(AETx, Height, Version) when Version < ?IRIS_PROTOCOL_VSN ->
     min_gas_price(AETx, Height, outer, Version);
 min_gas_price(AETx = #aetx{ type = Type, cb = CB, tx = Tx }, Height, Version) ->
     FeeGas = fee_gas(AETx, Height, Version),
-    FeeGasPrice = (CB:fee(Tx) + FeeGas - 1) div FeeGas,
+    FeeGasPrice = fee_gas_price(CB:fee(Tx), FeeGas),
     case Type of
         ga_meta_tx ->
             InnerMinGasPrice = min_gas_price(aetx_sign:tx(CB:tx(Tx)), Height, Version),
@@ -383,7 +387,7 @@ min_gas_price(AETx = #aetx{ type = Type, cb = CB, tx = Tx, size = Size }, Height
     FeeGas = if Kind == outer -> fee_gas(AETx, Height, Version);
                 Kind == inner -> fee_gas(AETx, Height, Version) - size_gas(Size)
              end,
-    FeeGasPrice = (CB:fee(Tx) + FeeGas - 1) div FeeGas,
+    FeeGasPrice = fee_gas_price(CB:fee(Tx), FeeGas),
     case Type of
         ga_meta_tx ->
             %% Also compute the minimum gas price for the wrapped Tx - make sure
@@ -420,6 +424,13 @@ fee_gas(#aetx{ type = Type, size = Size }, _Height, Version) when ?HAS_GAS_TX(Ty
     base_gas(Type, Version) + size_gas(Size);
 fee_gas(#aetx{} = Tx, Height, Version) ->
     gas_limit(Tx, Height, Version).
+
+%% A no_base_gas_tx_types/0 type covers no gas, and dividing by 0 raises - so
+%% answer 0 and let the caller's floor comparison reject the transaction.
+fee_gas_price(_Fee, 0) ->
+    0;
+fee_gas_price(Fee, FeeGas) ->
+    (Fee + FeeGas - 1) div FeeGas.
 
 -spec nonce(Tx :: tx()) -> Nonce :: non_neg_integer().
 nonce(#aetx{ cb = CB, tx = Tx }) ->
@@ -773,5 +784,14 @@ tx_types() ->
     , channel_offchain_tx
     , channel_client_reconnect_tx
     , paying_for_tx
+    , hc_vote_tx
+    ].
+
+%% Types aec_governance:tx_base_gas/2 has no clause for. It has no catch-all,
+%% so every consumer reads this list; the two private copies drifted apart.
+-spec no_base_gas_tx_types() -> [tx_type()].
+no_base_gas_tx_types() ->
+    [ channel_offchain_tx
+    , channel_client_reconnect_tx
     , hc_vote_tx
     ].

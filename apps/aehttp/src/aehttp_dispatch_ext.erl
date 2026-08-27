@@ -1010,15 +1010,13 @@ name_claim_bid_timeout_override() ->
     aeu_env:user_config_or_env([<<"mining">>, <<"name_claim_bid_timeout">>],
                                aecore, name_claim_bid_timeout, undefined).
 
-%% Partition aetx:tx_types/0 explicitly: aec_governance:tx_base_gas/2 has no
-%% catch-all, so a new type must go missing from the response - which
-%% aehttp_integration_SUITE catches - rather than 500 every request. None of the
-%% excluded types has a tx_base_gas/2 clause.
--define(NO_BASE_GAS_TX_TYPES, [channel_offchain_tx, channel_client_reconnect_tx, hc_vote_tx]).
+%% Partition tx_types/0 explicitly: tx_base_gas/2 has no catch-all, so a new
+%% type goes missing from the response - which aehttp_integration_SUITE
+%% catches - rather than 500ing every request.
 -define(CONTRACT_TX_TYPES, [contract_create_tx, contract_call_tx, ga_attach_tx, ga_meta_tx]).
 
 protocol_consensus_parameters(Protocol, EffectiveAtHeight, BidTimeoutOverride) ->
-    PlainTxTypes = aetx:tx_types() -- (?CONTRACT_TX_TYPES ++ ?NO_BASE_GAS_TX_TYPES),
+    PlainTxTypes = aetx:tx_types() -- (?CONTRACT_TX_TYPES ++ aetx:no_base_gas_tx_types()),
     ContractTxTypes = ?CONTRACT_TX_TYPES,
     %% aec_governance:tx_base_gas/3 accepts any ABI - it charges max gas for one
     %% it does not know - but a row per unknown ABI would document a fee for a

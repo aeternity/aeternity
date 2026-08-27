@@ -8,10 +8,15 @@
 
 -include_lib("aecore/include/blocks.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 
 -define(TEST_MODULE, aetx).
 
 -define(RECIPIENT_PUBKEY, <<"_________recipient_pubkey_______">>).
+
+-define(PROTOCOLS, [?ROMA_PROTOCOL_VSN, ?MINERVA_PROTOCOL_VSN, ?FORTUNA_PROTOCOL_VSN,
+                    ?LIMA_PROTOCOL_VSN, ?IRIS_PROTOCOL_VSN, ?CERES_PROTOCOL_VSN,
+                    ?ARCUS_PROTOCOL_VSN, ?SALUS_PROTOCOL_VSN]).
 
 %% Probably to be moved to common tests
 apply_signed_txs_test_() ->
@@ -117,3 +122,111 @@ check_used_gas_test_() ->
        end
       }
      ]}.
+
+%% tx_base_gas/2 has no catch-all, so every type is either priced there or on
+%% no_base_gas_tx_types/0; one that is neither raises out of every arity that
+%% reaches base_gas/2. Enumerated so the next new type fails here, not the node.
+tx_type_base_gas_coverage_test_() ->
+    NoBaseGas = ?TEST_MODULE:no_base_gas_tx_types(),
+    [{"Every no-base-gas type is a real tx type",
+      fun() -> ?assertEqual([], NoBaseGas -- ?TEST_MODULE:tx_types()) end}
+     | [ {lists:concat([Type, " at protocol ", Protocol]),
+          fun() ->
+                  case lists:member(Type, NoBaseGas) of
+                      false ->
+                          ?assert(is_integer(base_gas_of(Type, Protocol)));
+                      true ->
+                          %% On the list precisely because governance cannot
+                          %% price it. A tx_base_gas/2 clause added for one of
+                          %% these has to take it back off the list.
+                          ?assertError(function_clause, base_gas_of(Type, Protocol))
+                  end
+          end}
+         || Type <- ?TEST_MODULE:tx_types(), Protocol <- ?PROTOCOLS ]].
+
+base_gas_of(Type, Protocol) when Type =:= contract_create_tx;
+                                 Type =:= contract_call_tx;
+                                 Type =:= ga_attach_tx;
+                                 Type =:= ga_meta_tx ->
+    aec_governance:tx_base_gas(Type, Protocol, ?ABI_FATE_SOPHIA_1);
+base_gas_of(Type, Protocol) ->
+    aec_governance:tx_base_gas(Type, Protocol).
+
+%% The fee and gas entry points aec_tx_pool calls on a transaction it is asked to
+%% hold: check_minimum_fee/6 reaches min_fee/3 (and through it fee_gas/3 and
+%% gas_limit/3), check_minimum_miner_gas_price/6 reaches min_gas_price/3. A raise
+%% in any of them kills the process holding the transaction instead of rejecting
+%% it, so each has to answer for a no-base-gas type too.
+no_base_gas_tx_fee_functions_test_() ->
+    Height = 100,
+    [ {lists:concat([?TEST_MODULE:tx_type(Tx), " at protocol ", Protocol]),
+       fun() ->
+               ?assertEqual(0, ?TEST_MODULE:gas_limit(Tx, Height, Protocol)),
+               ?assertEqual(0, ?TEST_MODULE:fee_gas(Tx, Height, Protocol)),
+               ?assertEqual(0, ?TEST_MODULE:min_fee(Tx, Height, Protocol)),
+               %% Both arities: min_gas_price/3 delegates to min_gas_price/4
+               %% below Iris, and each divides by the fee gas computed above.
+               ?assertEqual(0, ?TEST_MODULE:min_gas_price(Tx, Height, Protocol))
+       end}
+      || Tx <- constructible_no_base_gas_txs(), Protocol <- ?PROTOCOLS ].
+
+constructible_no_base_gas_txs() ->
+    %% channel_client_reconnect_tx is in aetx:tx_types/0 but aetx:type_to_cb/1
+    %% has no clause for it, so no aetx() of that type can be built at all. The
+    %% coverage test above is what keeps it accounted for.
+    {ok, OffchainTx} =
+        aesc_offchain_tx:new(#{channel_id => aeser_id:create(channel, <<1:32/unit:8>>),
+                               state_hash => <<2:32/unit:8>>,
+                               round      => 1}),
+    {ok, VoteTx} =
+        aec_hc_vote_tx:new(#{voter_id => aeser_id:create(account, <<3:32/unit:8>>),
+                             epoch    => 1,
+                             type     => 1,
+                             data     => #{}}),
+    [OffchainTx, VoteTx].
+
+%% The no-base-gas types are not the only route to zero fee gas. An oracle
+%% transaction whose absolute TTL is already behind the current height falls off
+%% aeo_utils:ttl_delta/2 with {error, too_low_height}, and gas_limit/3's oracle
+%% clauses answer 0 for it - the case aetx:check_minimum_fee/2's own comment
+%% names. fee_gas/3's catch-all then delegates to gas_limit/3, so min_gas_price/3
+%% divides by that zero for an ordinary, priced tx type. Kept as its own test
+%% because it is a second, independent way into fee_gas_price/2's zero clause.
+expired_absolute_ttl_oracle_tx_fee_functions_test_() ->
+    Height = 100,
+    Expired = {block, Height - 50},
+    [ {lists:concat([?TEST_MODULE:tx_type(Tx), " with an expired absolute TTL",
+                     " at protocol ", Protocol]),
+       fun() ->
+               ?assertEqual(0, ?TEST_MODULE:gas_limit(Tx, Height, Protocol)),
+               ?assertEqual(0, ?TEST_MODULE:fee_gas(Tx, Height, Protocol)),
+               ?assertEqual(0, ?TEST_MODULE:min_fee(Tx, Height, Protocol)),
+               ?assertEqual(0, ?TEST_MODULE:min_gas_price(Tx, Height, Protocol))
+       end}
+      || Tx <- expired_ttl_oracle_txs(Expired), Protocol <- ?PROTOCOLS ].
+
+%% Only two of the four oracle types can hold an absolute TTL. The other two
+%% are typed relative_ttl() and pin ?ttl_delta_int in serialize/1 and
+%% deserialize/2, so a {block, _} TTL cannot exist for them at all.
+expired_ttl_oracle_txs(ExpiredTTL) ->
+    AccountId = aeser_id:create(account, <<4:32/unit:8>>),
+    OracleId  = aeser_id:create(oracle,  <<5:32/unit:8>>),
+    {ok, RegisterTx} =
+        aeo_register_tx:new(#{account_id      => AccountId,
+                              nonce           => 1,
+                              query_format    => <<"string">>,
+                              abi_version     => ?ABI_NO_VM,
+                              response_format => <<"string">>,
+                              query_fee       => 1,
+                              oracle_ttl      => ExpiredTTL,
+                              fee             => 20000}),
+    {ok, QueryTx} =
+        aeo_query_tx:new(#{sender_id     => AccountId,
+                           nonce         => 1,
+                           oracle_id     => OracleId,
+                           query         => <<"who?">>,
+                           query_fee     => 1,
+                           query_ttl     => ExpiredTTL,
+                           response_ttl  => {delta, 10},
+                           fee           => 20000}),
+    [RegisterTx, QueryTx].

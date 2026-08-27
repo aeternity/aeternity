@@ -82,6 +82,10 @@
 %% But we can improve and use 6 million (this allows reasonable
 %% size contracts to fit in a microblock at all)
 -define(BLOCK_GAS_LIMIT, 6000000).
+%% Networks whose block gas limit is the network's, not the operator's - see
+%% check_block_gas_limit/1. Hyperchains and ae_dev are left configurable: their
+%% limit is a property of that deployment, agreed among its own nodes.
+-define(FIXED_BLOCK_GAS_LIMIT_NETWORKS, [<<"ae_mainnet">>, <<"ae_uat">>]).
 -define(TX_BASE_GAS, 15000).
 %% Gas for 1 byte of a serialized tx.
 -define(BYTE_GAS, 20).
@@ -485,14 +489,44 @@ ensure_env() ->
     %% Resolve before the put: re-pinning the value the cache already holds is a
     %% no-op, while clearing first would force a global literal area sweep and
     %% leave readers resolving in the meantime.
-    try ?RESOLVE_NETWORK_ID() of
-        NetworkId -> persistent_term:put(?NETWORK_ID_CACHE_KEY, NetworkId)
+    %% One try, no 'of': the gas limit check has to fail closed the same way the
+    %% resolution does, and a body after 'of' is outside the catch.
+    try
+        NetworkId = ?RESOLVE_NETWORK_ID(),
+        ok = check_block_gas_limit(NetworkId),
+        persistent_term:put(?NETWORK_ID_CACHE_KEY, NetworkId)
     catch
         Class:Reason:Stacktrace ->
             %% Fail closed: an id resolved under a configuration that is already
             %% gone must not outlive it. Resolving raises the same error again.
             ok = clear_network_id_cache(),
             erlang:raise(Class, Reason, Stacktrace)
+    end.
+
+%% On a network whose limit is fixed for everyone, an override is not a local
+%% knob: it admits a different set of micro blocks and computes a different
+%% state root. Refuse to start. No fork - a node not overriding is unaffected.
+check_block_gas_limit(NetworkId) ->
+    case lists:member(NetworkId, ?FIXED_BLOCK_GAS_LIMIT_NETWORKS) of
+        false ->
+            ok;
+        true ->
+            case application:get_env(aecore, block_gas_limit, ?BLOCK_GAS_LIMIT) of
+                ?BLOCK_GAS_LIMIT ->
+                    ok;
+                Configured ->
+                    lager:error("Refusing to start: aecore block_gas_limit is "
+                                "configured as ~p, but ~s fixes it at ~p. The "
+                                "value decides which micro blocks this node "
+                                "admits and what Chain.block_gas_limit returns "
+                                "to a contract, so a node running its own would "
+                                "fork off the network.",
+                                [Configured, NetworkId, ?BLOCK_GAS_LIMIT]),
+                    error({block_gas_limit_override_would_fork,
+                           #{network_id => NetworkId,
+                             configured => Configured,
+                             network    => ?BLOCK_GAS_LIMIT}})
+            end
     end.
 
 -spec clear_network_id_cache() -> ok.
