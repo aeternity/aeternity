@@ -219,14 +219,9 @@ aefa_stores_for_protocol(_Protocol) ->
 finalize(#es{chain_api = API, stores = Stores} = ES) ->
     Aefa_stores = aefa_stores(ES),
     try
-        %% aefa_stores_lima (pre-Iris, frozen, DO NOT CHANGE) has no
-        %% terms_to_finalize/1, so that one case falls back to the live
-        %% module; every other protocol dispatches properly so a future
-        %% aefa_stores edit cannot change already-frozen Iris+ replay.
-        TermsToFinalize = case Aefa_stores of
-                              aefa_stores_lima -> aefa_stores:terms_to_finalize(Stores);
-                              _                -> Aefa_stores:terms_to_finalize(Stores)
-                          end,
+        %% Every protocol dispatches to its own frozen store module, so a
+        %% future aefa_stores edit cannot change already-forked replay.
+        TermsToFinalize = Aefa_stores:terms_to_finalize(Stores),
         ES1 = lists:foldl(fun(Val, ES0) -> spend_gas_for_traversal(Val, serial, ES0) end,
                           ES, TermsToFinalize),
         Gas = gas(ES1),

@@ -64,48 +64,36 @@ hex_sha256(Bin) ->
     list_to_binary(io_lib:format("~64.16.0b", [N])).
 
 %%%===================================================================
-%%% Behavioural freeze-guard: live terms_to_finalize == frozen one.
-%%%
-%%% aefa_engine_state:finalize/1 falls back to aefa_stores:terms_to_finalize/1
-%%% (the LIVE module) for pre-Iris, since aefa_stores_lima does not export it,
-%%% on the invariant that it is equivalent to the frozen aefa_stores_ceres
-%%% snapshot used to replay already-forked Iris..Ceres blocks. The sha256 guard
-%%% above catches edits to the frozen file; this catches the other direction --
-%%% an edit to the LIVE aefa_stores:terms_to_finalize/1 (or the shared
-%%% #store{}/#cache_entry{} layout) that diverges from the frozen behaviour.
+%%% Behavioural freeze-guard. terms_to_finalize/1 is a gas input from Iris on,
+%%% so each frozen rule is pinned on a store its own module built - not against
+%%% the live aefa_stores, which is free to diverge. The sha256 guard above
+%%% catches edits to the file; these catch a rule that still hashes right.
 %%%===================================================================
 
 -define(CONTRACT_PUBKEY, <<16#F1:256>>).
 
-empty_store_terms_to_finalize_equiv_test() ->
-    S = aefa_stores:new(),
-    ?assertEqual([], aefa_stores:terms_to_finalize(S)),
-    assert_live_equals_frozen(S).
+empty_store_terms_to_finalize_test_() ->
+    [ {atom_to_list(M) ++ ": empty store selects nothing",
+       ?_assertEqual([], M:terms_to_finalize(M:new()))}
+      || M <- frozen_modules() ].
 
-single_register_terms_to_finalize_equiv_test() ->
+single_register_terms_to_finalize_test_() ->
     Val = aeb_fate_data:make_string(<<"a-single-register-value">>),
-    S = put_reg(1, Val, fresh_contract_store()),
-    ?assertEqual([Val], aefa_stores:terms_to_finalize(S)),
-    assert_live_equals_frozen(S).
+    [ {atom_to_list(M) ++ ": one dirty register selects its term",
+       ?_assertEqual([Val], M:terms_to_finalize(put_reg(M, 1, Val)))}
+      || M <- frozen_modules() ].
 
-multi_entry_map_terms_to_finalize_equiv_test() ->
+multi_entry_map_terms_to_finalize_test_() ->
     Map = aeb_fate_data:make_map(#{ 1 => aeb_fate_data:make_string(<<"one">>)
                                   , 2 => aeb_fate_data:make_string(<<"two">>)
                                   , 3 => aeb_fate_data:make_string(<<"three">>)
                                   }),
-    S = put_reg(1, Map, fresh_contract_store()),
-    ?assertEqual([Map], aefa_stores:terms_to_finalize(S)),
-    assert_live_equals_frozen(S).
+    [ {atom_to_list(M) ++ ": one dirty map register selects the whole map",
+       ?_assertEqual([Map], M:terms_to_finalize(put_reg(M, 1, Map)))}
+      || M <- frozen_modules() ].
 
-%% The same store term must yield identical terms from both modules.
-assert_live_equals_frozen(S) ->
-    ?assertEqual(aefa_stores:terms_to_finalize(S),
-                 aefa_stores_ceres:terms_to_finalize(S)).
+frozen_modules() -> [aefa_stores_lima, aefa_stores_ceres].
 
-fresh_contract_store() ->
-    aefa_stores:put_contract_store(?CONTRACT_PUBKEY,
-                                   aefa_stores:initial_contract_store(),
-                                   aefa_stores:new()).
-
-put_reg(Pos, Val, S) ->
-    aefa_stores:put_value(?CONTRACT_PUBKEY, Pos, Val, S).
+put_reg(M, Pos, Val) ->
+    S = M:put_contract_store(?CONTRACT_PUBKEY, M:initial_contract_store(), M:new()),
+    M:put_value(?CONTRACT_PUBKEY, Pos, Val, S).
