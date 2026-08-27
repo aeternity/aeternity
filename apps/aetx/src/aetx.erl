@@ -45,7 +45,7 @@
         ]).
 
 -ifdef(TEST).
--export([tx/1]).
+-export([tx/1, min_gas_probe/3]).
 -endif.
 
 -define(IS_CONTRACT_TX(T), ((T =:= contract_create_tx) or (T =:= contract_call_tx)
@@ -254,11 +254,16 @@ deep_fee(AeTx, Trees, AccFee0) ->
             AccFee
     end.
 
+%% Above Iris this prices every transaction of a received micro block, on a
+%% path with no catch - so an unpriced type must answer here, not raise.
 -spec tx_min_gas(Tx :: tx(), Version :: aec_hard_forks:protocol_vsn()) -> Gas :: integer().
 tx_min_gas(#aetx{type = Type, size = Size, cb = CB, tx = Tx}, Version) when ?IS_CONTRACT_TX(Type) ->
     base_gas(Type, Version, CB:abi_version(Tx)) + size_gas(Size);
 tx_min_gas(#aetx{type = Type, size = Size}, Version) ->
-    base_gas(Type, Version) + size_gas(Size).
+    case lists:member(Type, no_base_gas_tx_types()) of
+        true  -> 0;
+        false -> base_gas(Type, Version) + size_gas(Size)
+    end.
 
 %% In case 0 is returned, the tx will not be included in the micro block
 %% candidate by the mempool.
@@ -747,6 +752,12 @@ ttl_delta(Height, {block, _H} = TTL) ->
 -ifdef(TEST).
 tx(Tx) ->
     Tx#aetx.tx.
+
+%% Carries only what tx_min_gas/2 reads, so a test can walk every tx_types/0
+%% entry including channel_client_reconnect_tx, which type_to_cb/1 cannot
+%% construct. Nothing else - the rest of this module dereferences the tx field.
+min_gas_probe(Type, CB, Size) ->
+    #aetx{type = Type, cb = CB, size = Size, tx = undefined}.
 -endif.
 
 -spec tx_type(tx()) -> tx_type().

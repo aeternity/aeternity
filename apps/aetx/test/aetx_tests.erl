@@ -4,6 +4,10 @@
 
 -module(aetx_tests).
 
+%% Stands in as the callback module of aetx:min_gas_probe/3 - see
+%% tx_min_gas_of/2 below.
+-export([abi_version/1]).
+
 -include_lib("eunit/include/eunit.hrl").
 
 -include_lib("aecore/include/blocks.hrl").
@@ -13,6 +17,10 @@
 -define(TEST_MODULE, aetx).
 
 -define(RECIPIENT_PUBKEY, <<"_________recipient_pubkey_______">>).
+
+%% Any non-zero serialized size: it makes size_gas/1 contribute, so a type that
+%% is priced cannot pass the zero-gas assertion by accident.
+-define(PROBE_SIZE, 100).
 
 -define(PROTOCOLS, [?ROMA_PROTOCOL_VSN, ?MINERVA_PROTOCOL_VSN, ?FORTUNA_PROTOCOL_VSN,
                     ?LIMA_PROTOCOL_VSN, ?IRIS_PROTOCOL_VSN, ?CERES_PROTOCOL_VSN,
@@ -134,12 +142,21 @@ tx_type_base_gas_coverage_test_() ->
           fun() ->
                   case lists:member(Type, NoBaseGas) of
                       false ->
-                          ?assert(is_integer(base_gas_of(Type, Protocol)));
+                          ?assert(is_integer(base_gas_of(Type, Protocol))),
+                          %% Priced, so tx_min_gas/2 must charge for it: the
+                          %% base gas plus the size gas, never 0.
+                          ?assertEqual(base_gas_of(Type, Protocol)
+                                       + ?PROBE_SIZE * aec_governance:byte_gas(),
+                                       tx_min_gas_of(Type, Protocol));
                       true ->
                           %% On the list precisely because governance cannot
                           %% price it. A tx_base_gas/2 clause added for one of
                           %% these has to take it back off the list.
-                          ?assertError(function_clause, base_gas_of(Type, Protocol))
+                          ?assertError(function_clause, base_gas_of(Type, Protocol)),
+                          %% ... and tx_min_gas/2 must answer rather than
+                          %% raise: gas/1 calls it on every tx of a received
+                          %% micro block above Iris, with no catch above it.
+                          ?assertEqual(0, tx_min_gas_of(Type, Protocol))
                   end
           end}
          || Type <- ?TEST_MODULE:tx_types(), Protocol <- ?PROTOCOLS ]].
@@ -152,11 +169,18 @@ base_gas_of(Type, Protocol) when Type =:= contract_create_tx;
 base_gas_of(Type, Protocol) ->
     aec_governance:tx_base_gas(Type, Protocol).
 
-%% The fee and gas entry points aec_tx_pool calls on a transaction it is asked to
-%% hold: check_minimum_fee/6 reaches min_fee/3 (and through it fee_gas/3 and
-%% gas_limit/3), check_minimum_miner_gas_price/6 reaches min_gas_price/3. A raise
-%% in any of them kills the process holding the transaction instead of rejecting
-%% it, so each has to answer for a no-base-gas type too.
+%% min_gas_probe/3 rather than a real transaction per type: tx_min_gas/2 reads
+%% only the type, the size and CB:abi_version/1, and channel_client_reconnect_tx
+%% has no type_to_cb/1 clause, so it is reachable no other way.
+tx_min_gas_of(Type, Protocol) ->
+    ?TEST_MODULE:tx_min_gas(?TEST_MODULE:min_gas_probe(Type, ?MODULE, ?PROBE_SIZE),
+                            Protocol).
+
+abi_version(undefined) -> ?ABI_FATE_SOPHIA_1.
+
+%% The fee and gas entry points aec_tx_pool calls on a transaction it is asked
+%% to hold. A raise in any of them kills the process holding the transaction
+%% instead of rejecting it, so each must answer for a no-base-gas type too.
 no_base_gas_tx_fee_functions_test_() ->
     Height = 100,
     [ {lists:concat([?TEST_MODULE:tx_type(Tx), " at protocol ", Protocol]),
