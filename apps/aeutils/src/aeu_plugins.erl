@@ -381,8 +381,13 @@ is_runnable(App) ->
     end.
 
 ensure_started(App) ->
-    Res = application:ensure_all_started(App),
-    lager:info("ensure_started(~p) -> ~p", [App, Res]).
+    case application:ensure_all_started(App) of
+        {ok, Started} ->
+            lager:info("ensure_started(~p) -> ~p", [App, Started]);
+        {error, Reason} ->
+            %% The caller spawns and drops the result, so nothing else reports it.
+            lager:error("Plugin ~p failed to start: ~p", [App, Reason])
+    end.
 
 bin(B) when is_binary(B) ->
     B;

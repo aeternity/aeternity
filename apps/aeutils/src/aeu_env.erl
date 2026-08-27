@@ -675,12 +675,13 @@ error_format(Fmt, Args, check) ->
     io:format(Fmt, Args);
 error_format(Fmt, Args, report) ->
     Str = io_lib:format(Fmt, Args),
-    Parts = re:split(Str, <<"\n">>),
-    Out = iolist_to_binary(
-            [hd(Parts) |
-             [[" | ", P] || P <- tl(Parts)]]),
     Out = re:replace(Str, <<"\n">>, <<" | ">>, [global, {return, binary}]),
-    lager:error("~s", [Out]).
+    %% Hooks 100-101 run before lager starts; without this the operator sees
+    %% only validation_failed, naming neither the setting nor the reason.
+    case lager:error("~s", [Out]) of
+        ok -> ok;
+        _  -> error_logger:error_msg("~s", [Out])
+    end.
 
 pp_pos([A,B|T]) when is_integer(B) ->
     [pp_pos_(A), pp_pos_(B) | pp_pos(T)];
