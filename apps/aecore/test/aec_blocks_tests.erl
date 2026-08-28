@@ -90,9 +90,8 @@ micro_block_gas_at_or_below_iris_for_no_base_gas_types() ->
       || Type <- aetx:no_base_gas_tx_types(),
          Protocol <- ?PROTOCOLS_AT_OR_BELOW_IRIS ].
 
-%% The whole validator pipeline, not one function: add_block/2 validates in
-%% the caller's process - a peer connection - before the micro block signature
-%% is checked, so a raise here took that process down on unsigned input.
+%% The validator entry point, not just gas/1: a micro block carrying one of the
+%% no-base-gas types has to come back with a verdict rather than raise.
 validate_micro_block_holding_a_no_base_gas_tx() ->
     [ {lists:concat(["validate_micro_block/2 with a channel_offchain_tx",
                      " at protocol ", Protocol]),
