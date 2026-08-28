@@ -188,6 +188,9 @@ maybe_force_arcus_metering(Env, true) ->
          andalso Base >= ?CERES_PROTOCOL_VSN
          andalso Base < ?ARCUS_PROTOCOL_VSN of
         true  ->
+            %% Also feeds aec_governance:block_gas_limit/1 via Chain.gas_limit. A
+            %% repricing clause there has to decide what a stepped-up dry run
+            %% reports, or gas estimation sees a limit the chain does not admit.
             Env1 = aetx_env:set_consensus_version(Env, ?ARCUS_PROTOCOL_VSN),
             %% Recorded with the step-up so version and floor cannot drift apart.
             aetx_env:set_metering_floor_version(Env1, Base);

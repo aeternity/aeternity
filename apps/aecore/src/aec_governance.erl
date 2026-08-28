@@ -144,7 +144,9 @@ block_gas_limit() ->
 %% Consensus-visible: the FATE and AEVM GASLIMIT opcodes and the gas budget of
 %% every contract a fork transition creates return this. The clause below is an
 %% open catch-all, so a repricing clause for a new protocol goes ABOVE it or it
-%% is dead.
+%% is dead - and it must also say what a dry run stepped up by
+%% aec_dry_run:maybe_force_arcus_metering/2 should report, which is not the
+%% protocol the chain admits.
 block_gas_limit(Protocol) when Protocol >= ?ROMA_PROTOCOL_VSN ->
     network_block_gas_limit().
 
