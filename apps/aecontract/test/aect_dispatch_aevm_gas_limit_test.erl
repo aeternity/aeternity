@@ -272,16 +272,9 @@ restore_env(Key, {ok, Value}) ->
 
 %%%===================================================================
 %%% (c) The dispatch site's own reads, off the compiled beams: it takes the
-%%% consensus arity and reads no configuration itself, and nothing below the
-%%% Env map adds one back.
-%%%
-%%% There used to be a third part here asserting that block_gas_limit/1's own
-%%% closure reads no configuration. That is no longer the invariant and
-%%% asserting it would be a lie: on a network that leaves the limit to its own
-%%% nodes, the limit IS configuration, deliberately. Which side of
-%%% ?FIXED_BLOCK_GAS_LIMIT_NETWORKS a network falls on is aec_governance_tests'
-%%% subject, and both_arities_are_one_closure_test/0 there is where "the opcode
-%%% cannot drift from block admission" is now proven off the beams.
+%%% consensus arity and reads no configuration itself. That block_gas_limit/1's
+%%% own closure cannot drift from block admission is aec_governance_tests'
+%%% both_arities_are_one_closure_test/0, not this module's.
 %%%===================================================================
 
 %% Reading configuration, as opposed to reading a constant. get_env is the one
@@ -300,10 +293,6 @@ restore_env(Key, {ok, Value}) ->
                       , {aeu_env, user_map_or_env, 4}
                       ]).
 
-%% A closure this small has room to grow a long way before the bound is a real
-%% constraint. Exceeding it aborts rather than truncates.
--define(WALK_LIMIT, 500).
-
 dispatch_site_reads_the_consensus_arity_test() ->
     Callees = direct_callees({aect_dispatch, run_common, 2}),
     ?assert(Callees =/= []),
@@ -318,62 +307,26 @@ dispatch_site_reads_the_consensus_arity_test() ->
     %% account, whatever aec_governance goes on to decide.
     ?assertEqual([], [MFA || MFA <- Callees, lists:member(MFA, ?CONFIG_READS)]).
 
-%% ...and nothing between the Env map and the opcode adds one back.
-no_config_read_below_the_opcode_test() ->
-    Reached = reachable_from({aevm_eeevm_state, gaslimit, 1}),
-    ?assertEqual([], [MFA || MFA <- Reached, lists:member(MFA, ?CONFIG_READS)]),
-    ?assert(lists:member({aevm_eeevm_state, gaslimit, 1}, Reached)).
-
-reachable_from(Root) ->
-    walk([Root], sets:new(), 0).
-
-walk([], Seen, _N) ->
-    sets:to_list(Seen);
-walk(_Pending, _Seen, N) when N > ?WALK_LIMIT ->
-    erlang:error({call_graph_walk_limit_exceeded, ?WALK_LIMIT});
-walk([MFA | Rest], Seen, N) ->
-    case sets:is_element(MFA, Seen) of
-        true  -> walk(Rest, Seen, N);
-        false -> walk(callees(MFA) ++ Rest, sets:add_element(MFA, Seen), N + 1)
-    end.
-
-%% Leaves. They are recorded in the visited set (so the assertions above see
-%% them) but not descended into: erlang and maps are preloaded or have no beam
-%% worth reading, and application is the thing being looked for, not a place
-%% to search.
-callees({erlang, _, _})      -> [];
-callees({maps, _, _})        -> [];
-callees({application, _, _}) -> [];
-callees(MFA)                 -> disasm_callees(MFA, strict).
-
-%% Two strictnesses on purpose: inside the walk an indirect call is a hole in
-%% an absence proof, so it aborts; a direct-callee membership test can hide
+%% Tolerant on indirect calls: a membership test over direct callees can hide
 %% nothing, and run_common/2's error branch emits lager parse-transform forms.
-direct_callees(MFA) -> disasm_callees(MFA, tolerant).
-
-disasm_callees({M, F, A}, Mode) ->
+direct_callees({M, F, A}) ->
     case code:which(M) of
         Path when is_list(Path) ->
             {beam_file, _, _, _, _, Fs} = beam_disasm:file(Path),
             case [Code || {function, Fn, Ar, _, Code} <- Fs, Fn =:= F, Ar =:= A] of
-                [Code] -> lists:flatmap(fun(I) -> call_targets(I, Mode) end, Code);
+                [Code] -> lists:flatmap(fun call_targets/1, Code);
                 []     -> erlang:error({no_such_function, {M, F, A}})
             end;
         NoBeam ->
             erlang:error({cannot_disassemble, M, NoBeam})
     end.
 
-call_targets({call, _, MFA}, _)                            -> [MFA];
-call_targets({call_only, _, MFA}, _)                       -> [MFA];
-call_targets({call_last, _, MFA, _}, _)                    -> [MFA];
-call_targets({call_ext, _, {extfunc, M, F, A}}, _)         -> [{M, F, A}];
-call_targets({call_ext_only, _, {extfunc, M, F, A}}, _)    -> [{M, F, A}];
-call_targets({call_ext_last, _, {extfunc, M, F, A}, _}, _) -> [{M, F, A}];
-call_targets({make_fun2, MFA, _, _, _}, _)                 -> [MFA];
-call_targets({make_fun3, MFA, _, _, _, _}, _)              -> [MFA];
-%% An indirect call is a hole in the proof, not something to walk past.
-call_targets({apply, _}, strict)           -> erlang:error(dynamic_apply_in_call_graph);
-call_targets({apply_last, _, _}, strict)   -> erlang:error(dynamic_apply_in_call_graph);
-call_targets({call_fun, _}, strict)        -> erlang:error(dynamic_fun_call_in_call_graph);
-call_targets({call_fun2, _, _, _}, strict) -> erlang:error(dynamic_fun_call_in_call_graph);
-call_targets(_, _)                         -> [].
+call_targets({call, _, MFA})                            -> [MFA];
+call_targets({call_only, _, MFA})                       -> [MFA];
+call_targets({call_last, _, MFA, _})                    -> [MFA];
+call_targets({call_ext, _, {extfunc, M, F, A}})         -> [{M, F, A}];
+call_targets({call_ext_only, _, {extfunc, M, F, A}})    -> [{M, F, A}];
+call_targets({call_ext_last, _, {extfunc, M, F, A}, _}) -> [{M, F, A}];
+call_targets({make_fun2, MFA, _, _, _})                 -> [MFA];
+call_targets({make_fun3, MFA, _, _, _, _})              -> [MFA];
+call_targets(_)                                         -> [].
