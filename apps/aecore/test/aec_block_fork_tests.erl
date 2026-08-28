@@ -329,13 +329,11 @@ budget_agrees_with_block_admission_on_every_network() ->
       || NetworkId  <- ?FIXED_NETWORK_IDS ++ ?CONFIGURABLE_NETWORK_IDS,
          Configured <- [undefined, {ok, ?OVERRIDE_BLOCK_GAS_LIMIT}] ].
 
-%% The red witness. aec_governance:check_block_gas_limit/1 refuses to start a
-%% node configured this way, but it runs once at boot - so the override here is
-%% the one that arrives afterwards, from a remote shell. Without the network
-%% test at the read site every row answers ?OVERRIDE_BLOCK_GAS_LIMIT, and 1234
-%% is below any fork contract's init cost - so on that node the create fails
-%% and succeeds everywhere else, which is the divergence itself rather than a
-%% proxy for it.
+%% aec_governance:check_block_gas_limit/1 runs once at boot, so the override
+%% here is the one that arrives afterwards. Without the network test at the
+%% read site every row answers ?OVERRIDE_BLOCK_GAS_LIMIT, which is below any
+%% fork contract's init cost - so the create fails on that node alone, which is
+%% the divergence itself rather than a proxy for it.
 budget_is_immune_to_the_knob_on_a_fixed_network() ->
     [ with_network_id(
         NetworkId,
@@ -351,10 +349,10 @@ budget_is_immune_to_the_knob_on_a_fixed_network() ->
         end)
       || NetworkId <- ?FIXED_NETWORK_IDS ].
 
-%% The other red witness, and the control for the one above: the knob is real,
-%% and where the network leaves the limit to its own nodes it moves the fork
-%% budget with it. Before the read-site test every row here answered
-%% ?HISTORICAL_BLOCK_GAS_LIMIT while the node ran on ?OVERRIDE_BLOCK_GAS_LIMIT.
+%% The control for the case above: the knob is real, and where the network
+%% leaves the limit to its own nodes it moves the fork budget with it. Before
+%% the read-site test every row here answered ?HISTORICAL_BLOCK_GAS_LIMIT while
+%% the node ran on ?OVERRIDE_BLOCK_GAS_LIMIT.
 budget_follows_the_knob_on_a_configurable_network() ->
     [ with_network_id(
         NetworkId,

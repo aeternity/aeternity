@@ -344,12 +344,11 @@ block_gas_limit_is_historical_unconfigured() ->
         end)
       || NetworkId <- all_network_ids() ].
 
-%% The red witness for the read-site test. check_block_gas_limit/1 runs once, at
-%% boot; this override arrives after it, which is exactly what a remote shell
-%% does - and what the branch's own aehttp_integration_SUITE helper
-%% assert_node_settings_block_gas_limit_live/3 does to a running node. Without
-%% the test at the read site, block_gas_limit/0 answers ?OVERRIDE_BLOCK_GAS_LIMIT
-%% here and this node admits micro blocks no other ae_mainnet node would.
+%% check_block_gas_limit/1 runs once, at boot; this override arrives after it,
+%% which is what a remote shell does - and what aehttp_integration_SUITE's
+%% assert_node_settings_block_gas_limit_live/3 does. Without the read-site test
+%% block_gas_limit/0 answers ?OVERRIDE_BLOCK_GAS_LIMIT and this node admits
+%% micro blocks no other ae_mainnet node would.
 runtime_override_moves_neither_arity_on_a_fixed_network() ->
     [ with_network_id(
         NetworkId,
@@ -368,7 +367,7 @@ runtime_override_moves_neither_arity_on_a_fixed_network() ->
         end)
       || NetworkId <- fixed_limit_network_ids() ].
 
-%% The other red witness. Before the read-site test block_gas_limit/1 answered
+%% Before the read-site test block_gas_limit/1 answered
 %% ?HISTORICAL_BLOCK_GAS_LIMIT here while the node admitted blocks up to
 %% ?OVERRIDE_BLOCK_GAS_LIMIT - a deployment whose contracts are told a limit
 %% its own nodes do not use.

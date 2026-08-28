@@ -142,10 +142,9 @@ opcode_is_historical_on_the_whole_matrix() ->
         end)
       || NetworkId <- ?FIXED_NETWORK_IDS ++ ?CONFIGURABLE_NETWORK_IDS ].
 
-%% The red witness. aec_governance:check_block_gas_limit/1 refuses to start a
-%% node configured this way, but it runs once at boot - so the override here is
-%% the one that arrives afterwards, from a remote shell. Without the network
-%% test at the read site every row answers ?OVERRIDE_BLOCK_GAS_LIMIT.
+%% aec_governance:check_block_gas_limit/1 runs once at boot, so the override
+%% here is the one a remote shell sets afterwards. Without the network test at
+%% the read site the AEVM opcode answers ?OVERRIDE_BLOCK_GAS_LIMIT on every row.
 opcode_is_immune_to_the_knob_on_a_fixed_network() ->
     [ with_network_id(
         NetworkId,
@@ -162,10 +161,10 @@ opcode_is_immune_to_the_knob_on_a_fixed_network() ->
         end)
       || NetworkId <- ?FIXED_NETWORK_IDS ].
 
-%% The other red witness. Where the limit is that deployment's own, a contract
-%% asking for it must be told the number its own nodes admit blocks by. Before
-%% the read-site test every row here answered ?HISTORICAL_BLOCK_GAS_LIMIT while
-%% the node ran on ?OVERRIDE_BLOCK_GAS_LIMIT.
+%% Where the limit is that deployment's own, a contract asking for it must be
+%% told the number its own nodes admit blocks by. Before the read-site test the
+%% AEVM opcode answered ?HISTORICAL_BLOCK_GAS_LIMIT while the node ran on
+%% ?OVERRIDE_BLOCK_GAS_LIMIT.
 opcode_follows_the_knob_on_a_configurable_network() ->
     [ with_network_id(
         NetworkId,
