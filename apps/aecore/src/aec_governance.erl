@@ -546,14 +546,17 @@ check_block_gas_limit(NetworkId) ->
                 ?BLOCK_GAS_LIMIT ->
                     ok;
                 Configured ->
-                    lager:error("Refusing to start: aecore block_gas_limit is "
-                                "configured as ~p, but ~s fixes it at ~p. The "
-                                "value decides which micro blocks this node "
-                                "admits and what Chain.block_gas_limit returns "
-                                "to a contract, and on this network it is the "
-                                "network's, so the configured one would be "
-                                "ignored rather than honoured.",
-                                [Configured, NetworkId, ?BLOCK_GAS_LIMIT]),
+                    %% error_logger, not lager: this runs as a setup hook, and
+                    %% lager is not started yet.
+                    error_logger:error_msg(
+                      "Refusing to start: aecore block_gas_limit is "
+                      "configured as ~p, but ~s fixes it at ~p. The "
+                      "value decides which micro blocks this node "
+                      "admits and what Chain.block_gas_limit returns "
+                      "to a contract, and on this network it is the "
+                      "network's, so the configured one would be "
+                      "ignored rather than honoured.~n",
+                      [Configured, NetworkId, ?BLOCK_GAS_LIMIT]),
                     error({block_gas_limit_override_would_fork,
                            #{network_id => NetworkId,
                              configured => Configured,
