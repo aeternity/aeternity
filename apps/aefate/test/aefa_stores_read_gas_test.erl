@@ -18,6 +18,7 @@
 -define(CONTRACT_PUBKEY, <<16#C2:256>>).
 -define(CALLER_PUBKEY,   <<16#CB:256>>).
 -define(MAP_STORE_POS, 3).
+-define(ALIAS_STORE_POS, 4).
 -define(SEED_GAS, 1000000000).
 
 %%%===================================================================
@@ -103,6 +104,18 @@ gc_round_trip_gas(Size) ->
     Stores4 = aefa_stores:put_value(?CONTRACT_PUBKEY, ?MAP_STORE_POS, 0, Stores3),
     {ok, _ChainApi3, GasLeft2} = aefa_stores:finalize(ChainApi2, ?SEED_GAS, Stores4),
     ?SEED_GAS - GasLeft2.
+
+%% Re-enter through the chain api's own trees, so a later finalize/3 reads an
+%% MPT-backed store with an empty write cache -- the shape a real call gets from
+%% aect_state_tree:add_store/3. Reading straight back out of ChainApi1 returns the
+%% primop cache instead, and the bounded walk is then never entered.
+committed(ChainApi) ->
+    aefa_chain_api:new(#{ gas_price => 1
+                        , fee        => 0
+                        , origin     => ?CALLER_PUBKEY
+                        , trees      => aefa_chain_api:final_trees(ChainApi)
+                        , tx_env     => aetx_env:tx_env(_Height = 1, ?ARCUS_PROTOCOL_VSN)
+                        }).
 
 fresh_chain_api(Protocol) ->
     Trees = trees_with_one_contract(),
@@ -307,7 +320,8 @@ seed_store_map(Entries) ->
     Stores1 = aefa_stores:put_value(?CONTRACT_PUBKEY, ?MAP_STORE_POS,
                                     aeb_fate_data:make_map(Entries), Stores0),
     {ok, ChainApi1, _} = aefa_stores:finalize(ChainApi0, ?SEED_GAS, Stores1),
-    {OnChainStore, ChainApi2} = aefa_chain_api:contract_store(?CONTRACT_PUBKEY, ChainApi1),
+    {OnChainStore, ChainApi2} =
+        aefa_chain_api:contract_store(?CONTRACT_PUBKEY, committed(ChainApi1)),
     Stores2 = aefa_stores:put_contract_store(?CONTRACT_PUBKEY, OnChainStore, aefa_stores:new()),
     {ok, RegVal, Stores3, _, _} =
         aefa_stores:find_value(?CONTRACT_PUBKEY, ?MAP_STORE_POS, Stores2, ?SEED_GAS),
@@ -333,3 +347,126 @@ seed_store_map_with_one_entry() ->
     {ok, RegVal, _, _, _} = aefa_stores:find_value(?CONTRACT_PUBKEY, ?MAP_STORE_POS, Store, 1000000000),
     ?FATE_STORE_MAP(_Cache, MapId) = RegVal,
     {MapId, Store}.
+
+%%%===================================================================
+%%% (f) finalize-time subtree reads: bounded by the gas, not by the map
+%%%===================================================================
+
+%% Equivalence guard: bounding the walk must not move the abort boundary.
+gc_abort_boundary_is_exactly_the_successful_cost_test() ->
+    {ChainApi, Stores} = staged_gc_drop(200),
+    {ok, _, GasLeft} = aefa_stores:finalize(ChainApi, ?SEED_GAS, Stores),
+    Cost = ?SEED_GAS - GasLeft,
+    ?assertMatch({ok, _, 0}, aefa_stores:finalize(ChainApi, Cost, Stores)),
+    ?assertEqual({error, out_of_gas}, aefa_stores:finalize(ChainApi, Cost - 1, Stores)).
+
+%% Same guard on the copy path, which crosses the other two sites.
+copy_abort_boundary_is_exactly_the_successful_cost_test() ->
+    {ChainApi, Stores} = staged_map_copy(200),
+    {ok, _, GasLeft} = aefa_stores:finalize(ChainApi, ?SEED_GAS, Stores),
+    Cost = ?SEED_GAS - GasLeft,
+    ?assertMatch({ok, _, 0}, aefa_stores:finalize(ChainApi, Cost, Stores)),
+    ?assertEqual({error, out_of_gas}, aefa_stores:finalize(ChainApi, Cost - 1, Stores)).
+
+%% The shared helper against what it replaces: read whole, then charge.
+subtree_within_gas_matches_read_then_charge_test() ->
+    N = 200,
+    RawStore = persisted_raw_store(N),
+    Prefix = map_subtree_prefix(RawStore),
+    Subtree = aect_contracts_store:subtree(Prefix, RawStore),
+    ?assertEqual(N, maps:size(Subtree)),
+    Cost = aec_governance:store_read_base_gas()
+         + subtree_bytes(Subtree) * aec_governance:store_read_byte_gas(),
+    ?assertEqual({Subtree, 0}, aefa_stores:subtree_within_gas(Prefix, RawStore, Cost)),
+    ?assertEqual({Subtree, 7}, aefa_stores:subtree_within_gas(Prefix, RawStore, Cost + 7)),
+    ?assertThrow(out_of_gas, aefa_stores:subtree_within_gas(Prefix, RawStore, Cost - 1)),
+    ?assertThrow(out_of_gas, aefa_stores:subtree_within_gas(Prefix, RawStore, 0)).
+
+%% The GcCache-miss fallback is unreachable in production, so drive it directly:
+%% a hit charges nothing, a miss charges exactly read_gas_cost(bytes), and both
+%% leave the same store. Meta is passed through untouched, so #{} is enough.
+gc_map_cache_miss_is_charged_like_any_other_subtree_read_test() ->
+    N = 200,
+    {MapId, _Stores, ChainApi} = seed_store_map(n_entry_map(N)),
+    {RawStore, _} = aefa_chain_api:contract_store(?CONTRACT_PUBKEY, ChainApi),
+    Subtree = aect_contracts_store:subtree(map_subtree_prefix(RawStore), RawStore),
+    ?assertEqual(N, maps:size(Subtree)),
+    Cost = aec_governance:store_read_base_gas()
+         + subtree_bytes(Subtree) * aec_governance:store_read_byte_gas(),
+    S = {#{}, RawStore},
+    {_, 0, HitStore,  HitGas}  = aefa_stores:gc_map(MapId, S, #{MapId => Subtree}, ?SEED_GAS),
+    {_, 0, MissStore, MissGas} = aefa_stores:gc_map(MapId, S, #{}, ?SEED_GAS),
+    ?assertEqual(?SEED_GAS, HitGas),
+    ?assertEqual(?SEED_GAS - Cost, MissGas),
+    ?assertEqual(HitStore, MissStore),
+    ?assertMatch({_, 0, _, 0}, aefa_stores:gc_map(MapId, S, #{}, Cost)),
+    ?assertThrow(out_of_gas, aefa_stores:gc_map(MapId, S, #{}, Cost - 1)).
+
+%% The regression: before the fix a 40x bigger map cost ~40x the work to refuse.
+gc_refused_read_work_is_bounded_by_gas_not_map_size_test() ->
+    %% The read floor plus 100 bytes -- a couple of entries.
+    Gas = aec_governance:store_read_base_gas() + 1000,
+    Small = refused_gc_reductions(100, Gas),
+    Large = refused_gc_reductions(4000, Gas),
+    ?assert(Large < Small * 3).
+
+copy_refused_read_work_is_bounded_by_gas_not_map_size_test() ->
+    Gas = aec_governance:store_read_base_gas() + 1000,
+    Small = refused_copy_reductions(100, Gas),
+    Large = refused_copy_reductions(4000, Gas),
+    ?assert(Large < Small * 3).
+
+%%% -- (f) helpers ---------------------------------------------------------
+
+%% Reductions burned by a finalize that is refused, excluding all setup.
+refused_gc_reductions(N, Gas) ->
+    {ChainApi, Stores} = staged_gc_drop(N),
+    measure_refused(ChainApi, Stores, Gas).
+
+refused_copy_reductions(N, Gas) ->
+    {ChainApi, Stores} = staged_map_copy(N),
+    measure_refused(ChainApi, Stores, Gas).
+
+measure_refused(ChainApi, Stores, Gas) ->
+    {reductions, R0} = erlang:process_info(self(), reductions),
+    Result = aefa_stores:finalize(ChainApi, Gas, Stores),
+    {reductions, R1} = erlang:process_info(self(), reductions),
+    ?assertEqual({error, out_of_gas}, Result),
+    R1 - R0.
+
+%% Big enough serialized to clear ?STORE_MAP_THRESHOLD and be a real store map.
+n_entry_map(N) ->
+    Value = aeb_fate_data:make_string(binary:copy(<<$a>>, 20)),
+    maps:from_list([ {I, Value} || I <- lists:seq(1, N) ]).
+
+%% Round 2 staged, not run: the map's only reference is overwritten, so
+%% finalize/3 must read its whole subtree through gc_refcounts/4 to collect it.
+staged_gc_drop(N) ->
+    {_MapId, Stores, ChainApi} = seed_store_map(n_entry_map(N)),
+    {ChainApi, aefa_stores:put_value(?CONTRACT_PUBKEY, ?MAP_STORE_POS, 0, Stores)}.
+
+%% As above, but aliased into a second register first: two live references
+%% mean the update cannot reuse in place and becomes a copy_map/5.
+staged_map_copy(N) ->
+    {MapId, Stores0, ChainApi} = seed_store_map(n_entry_map(N)),
+    Alias = ?FATE_STORE_MAP(#{}, MapId),
+    Stores1 = aefa_stores:put_value(?CONTRACT_PUBKEY, ?ALIAS_STORE_POS, Alias, Stores0),
+    Updated = ?FATE_STORE_MAP(#{ aeb_fate_data:make_string(<<"new">>) =>
+                                     aeb_fate_data:make_string(binary:copy(<<$n>>, 200)) },
+                              MapId),
+    {ChainApi, aefa_stores:put_value(?CONTRACT_PUBKEY, ?MAP_STORE_POS, Updated, Stores1)}.
+
+persisted_raw_store(N) ->
+    {_MapId, _Stores, ChainApi} = seed_store_map(n_entry_map(N)),
+    {RawStore, _} = aefa_chain_api:contract_store(?CONTRACT_PUBKEY, ChainApi),
+    RawStore.
+
+%% aefa_stores' map_data_key/1 without reaching into the module: the marker
+%% node is the shortest key under the prefix, and every entry key extends it.
+map_subtree_prefix(RawStore) ->
+    Keys = [ K || K <- maps:keys(aect_contracts_store:contents(RawStore)),
+                  binary:part(K, 0, 1) =:= <<1>> ],
+    hd(lists:sort(fun(A, B) -> byte_size(A) =< byte_size(B) end, Keys)).
+
+subtree_bytes(Subtree) ->
+    maps:fold(fun(K, V, Acc) -> Acc + byte_size(K) + byte_size(V) end, 0, Subtree).

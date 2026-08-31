@@ -27,6 +27,7 @@
           remove/2,
           subtree/2,
           subtree_w_cache/2,
+          subtree_within_bytes/3,
           write_cache/1,
           serialize_for_client/1 ]).
 
@@ -115,6 +116,61 @@ subtree_w_cache(Prefix, #store{ cache = Cache, read_cache = RCache, mtree = Tree
                 end
         end,
     {maps:merge(FromTree, FromCache), S#store{ read_cache = RCache1 }}.
+
+%% Same result as subtree/2, but abandons the traversal once the merged byte
+%% count would exceed MaxBytes. Returns no store on purpose: an abandoned walk
+%% must never leave {subtree, Prefix} => true and memoize a partial subtree.
+-spec subtree_within_bytes(key(), store(), non_neg_integer()) ->
+        {ok, #{key() := val()}, non_neg_integer()} | {error, too_many_bytes}.
+subtree_within_bytes(Prefix, #store{ cache = Cache, read_cache = RCache, mtree = Tree }, MaxBytes) ->
+    FromCache = subtree_from_cache(Prefix, Cache),
+    case map_bytes(FromCache) of
+        Bytes0 when Bytes0 > MaxBytes ->
+            {error, too_many_bytes};
+        Bytes0 ->
+            case maps:get({subtree, Prefix}, RCache, false) of
+                true ->
+                    %% Already materialized by an earlier read; nothing to abandon.
+                    Merged = maps:merge(subtree_from_cache(Prefix, RCache), FromCache),
+                    case map_bytes(Merged) of
+                        Bytes when Bytes > MaxBytes -> {error, too_many_bytes};
+                        Bytes                       -> {ok, Merged, Bytes}
+                    end;
+                false ->
+                    case aeu_mtrees:read_only_subtree(Prefix, Tree) of
+                        {error, no_such_subtree} ->
+                            {ok, FromCache, Bytes0};      %% subtree is only in cache
+                        {ok, Subtree} ->
+                            Iterator = aeu_mtrees:iterator(Subtree),
+                            walk_within_bytes(aeu_mtrees:iterator_next(Iterator),
+                                              FromCache, Bytes0, MaxBytes)
+                    end
+            end
+    end.
+
+walk_within_bytes('$end_of_table', Acc, Bytes, _MaxBytes) ->
+    {ok, Acc, Bytes};
+walk_within_bytes({<<>>, _Val, Iter}, Acc, Bytes, MaxBytes) ->
+    walk_within_bytes(aeu_mtrees:iterator_next(Iter), Acc, Bytes, MaxBytes);
+walk_within_bytes({Key, Val, Iter}, Acc, Bytes, MaxBytes) ->
+    case add_within_bytes(Key, Val, Acc, Bytes, MaxBytes) of
+        {error, _} = Err ->
+            Err;
+        {ok, Acc1, Bytes1} ->
+            walk_within_bytes(aeu_mtrees:iterator_next(Iter), Acc1, Bytes1, MaxBytes)
+    end.
+
+%% Write cache wins over the tree, as in subtree_w_cache/2's merge.
+add_within_bytes(Key, _Val, Acc, Bytes, _MaxBytes) when is_map_key(Key, Acc) ->
+    {ok, Acc, Bytes};
+add_within_bytes(Key, Val, Acc, Bytes, MaxBytes) ->
+    case Bytes + byte_size(Key) + byte_size(Val) of
+        Bytes1 when Bytes1 > MaxBytes -> {error, too_many_bytes};
+        Bytes1                        -> {ok, Acc#{ Key => Val }, Bytes1}
+    end.
+
+map_bytes(Map) ->
+    maps:fold(fun(K, V, Acc) -> Acc + byte_size(K) + byte_size(V) end, 0, Map).
 
 subtree_from_cache(Prefix, Cache) ->
     N = byte_size(Prefix),

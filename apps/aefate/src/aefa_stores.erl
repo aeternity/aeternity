@@ -97,6 +97,8 @@
         , optimistic_reuse_fixpoint/6
         , full_reuse_fixpoint/6
         , compute_reuse_fixpoint/4
+        , subtree_within_gas/3
+        , gc_map/4
         ]).
 -endif.
 
@@ -282,8 +284,8 @@ store_map_to_list_(Pubkey, MapId, #store{cache = Cache} = S, Gas) ->
     {ok, Meta, S1} = find_meta_data(Pubkey, S),
     ?METADATA(RawId, _, _) = get_map_meta(MapId, Meta),
     {Subtree, Store1} = aect_contracts_store:subtree_w_cache(map_data_key(RawId), Store),
-    %% Whole-subtree read charged like any other subtree materialization
-    %% (compute_copy_refcounts's copy branch): proportional to total bytes.
+    %% Charged proportional to total bytes, read first. The finalize-time reads
+    %% bound before reading; here aefa_fate_op pre-charges per entry instead.
     case charge_read_gas(Gas, subtree_bytes(Subtree)) of
         out_of_gas -> {error, out_of_gas};
         Gas1 ->
@@ -436,7 +438,7 @@ finalize_entry(Pubkey, Cache = #cache_entry{store = Store}, {Writes, GasLeft}) -
     %% get a dummy entry with only the reference count set.
     %% GasLeft/GcCache: subtree reads done while computing refcounts/garbage
     %% are charged here, before perform_store_updates runs; GcCache carries
-    %% the fetched subtrees forward so gc_map/3 does not re-fetch them.
+    %% the fetched subtrees forward so gc_map/4 does not re-fetch them.
     {Metadata1, Updates, GasLeft1, GcCache} = compute_store_updates(Metadata, Cache, GasLeft),
     ?DEBUG_PRINT("Updates\n  ~p\n", [Updates]),
 
@@ -473,7 +475,7 @@ check_store_updates(Updates) ->
 %% GasLeft is threaded through so subtree reads done while computing
 %% reuse/garbage are charged before perform_store_updates runs. Returns
 %% GcCache: the RawId -> subtree map fetched while computing garbage, so
-%% gc_map/3 can reuse it instead of re-fetching.
+%% gc_map/4 can reuse it instead of re-fetching.
 -spec compute_store_updates(store_meta(), #cache_entry{}, non_neg_integer()) ->
         {store_meta(), [store_update()], non_neg_integer(), #{raw_id() => #{binary() => binary()}}}.
 compute_store_updates(Metadata, #cache_entry{terms = TermCache, store = Store}, GasLeft) ->
@@ -643,6 +645,28 @@ charge_read_gas(Gas, Bytes) ->
 subtree_bytes(Subtree) ->
     maps:fold(fun(K, V, Acc) -> Acc + byte_size(K) + byte_size(V) end, 0, Subtree).
 
+%% read_gas_cost(Bytes) =< GasLeft  <=>  Bytes =< max_read_bytes(GasLeft).
+max_read_bytes(GasLeft) ->
+    case GasLeft - aec_governance:store_read_base_gas() of
+        TooLittle when TooLittle < 0 -> out_of_gas;
+        Rest                         -> Rest div aec_governance:store_read_byte_gas()
+    end.
+
+%% Bounds the read by the gas on offer before materializing it. Refuses exactly
+%% when the post-hoc charge would throw, so the gas charged is unchanged.
+-spec subtree_within_gas(binary(), aect_contracts_store:store(), non_neg_integer()) ->
+        {#{binary() => binary()}, non_neg_integer()}.
+subtree_within_gas(Prefix, Store, GasLeft) ->
+    case max_read_bytes(GasLeft) of
+        out_of_gas ->
+            throw(out_of_gas);          %% cannot even pay the read floor
+        MaxBytes ->
+            case aect_contracts_store:subtree_within_bytes(Prefix, Store, MaxBytes) of
+                {error, too_many_bytes} -> throw(out_of_gas);
+                {ok, Subtree, Bytes}    -> {Subtree, spend_read_gas(GasLeft, Bytes)}
+            end
+    end.
+
 -spec perform_store_update(store_meta(), store_update(),
                             {store_meta(), aect_contracts_store:store()},
                             non_neg_integer(),
@@ -656,8 +680,7 @@ perform_store_update(OldMeta, {copy_map, MapId, Map}, S, GasLeft, _GcCache) ->
 perform_store_update(_OldMeta, {update_map, MapId, Map}, S, GasLeft, _GcCache) ->
     update_map(MapId, Map, S, GasLeft);
 perform_store_update(_OldMeta, {gc_map, MapId}, S, GasLeft, GcCache) ->
-    {Meta1, Bytes, Store1} = gc_map(MapId, S, GcCache),
-    {Meta1, Bytes, Store1, GasLeft}.
+    gc_map(MapId, S, GcCache, GasLeft).
 
 %% Write to a store register
 push_term(Pos, FateVal, Store) ->
@@ -690,10 +713,7 @@ copy_map(OldMeta, MapId, ?FATE_STORE_MAP(Cache, OldId), {Meta, Store}, GasLeft) 
     %% it up there.
     ?METADATA(OldRawId, _RefCount, OldSize) = get_map_meta(OldId, OldMeta),
     RawId   = MapId,
-    OldMap  = aect_contracts_store:subtree(map_data_key(OldRawId), Store),
-    %% OldMap is a full subtree read (O(size) MPT work); charge it read-side
-    %% before using its contents, same formula as every other subtree read.
-    GasLeft1 = spend_read_gas(GasLeft, subtree_bytes(OldMap)),
+    {OldMap, GasLeft1} = subtree_within_gas(map_data_key(OldRawId), Store, GasLeft),
     NewData = cache_to_bin_data(Cache),
     Size    = OldSize + size_delta(OldMap, NewData),
     Meta1   = put_map_meta(MapId, ?METADATA(RawId, RefCount, Size), Meta),
@@ -727,18 +747,18 @@ update_map(MapId, ?FATE_STORE_MAP(Cache, OldId), {Meta, Store}, GasLeft) ->
     Meta2     = update_refcounts(RefCounts, Meta1),
     {Meta2, Bytes, Store1, GasLeft2}.
 
-gc_map(RawId, {Meta, Store}, GcCache) ->
-    %% Reuse the subtree already fetched (and charged) by gc_refcounts/4
-    %% instead of re-fetching. Fallback re-fetch kept in case GcCache is
-    %% ever missing an entry, so a future refactor fails safe, not crashes.
-    Data = case maps:find(RawId, GcCache) of
-               {ok, Cached} -> Cached;
-               error        -> aect_contracts_store:subtree(map_data_key(RawId), Store)
-           end,
+gc_map(RawId, {Meta, Store}, GcCache, GasLeft) ->
+    %% Reuse the subtree gc_refcounts/4 already fetched and charged. The fallback
+    %% is inert today, but a fail-safe path must still be bounded and charged.
+    {Data, GasLeft1} =
+        case maps:find(RawId, GcCache) of
+            {ok, Cached} -> {Cached, GasLeft};
+            error        -> subtree_within_gas(map_data_key(RawId), Store, GasLeft)
+        end,
     Store1 = maps:fold(fun(Key, _, S) -> aect_contracts_store:remove(map_raw_key(RawId, Key), S) end,
                        aect_contracts_store:remove(map_data_key(RawId), Store), Data),
     %% Bytes = 0: already charged read-side in gc_refcounts/4 for this Data.
-    {Meta, 0, Store1}.
+    {Meta, 0, Store1, GasLeft1}.
 
 -type bin_data()  :: [{binary(), binary() | ?FATE_MAP_TOMBSTONE}].
 -type map_cache() :: #{fate_val() => fate_val() | ?FATE_MAP_TOMBSTONE}.
@@ -890,8 +910,8 @@ compute_copy_refcounts(Meta, Reuse, Maps, Store, {SubtreeCache, GasLeft}) ->
                                       {ok, CachedSubtree} ->
                                           {maps:without(NewKeys, CachedSubtree), SC, Gas};
                                       error ->
-                                          FullSubtree = aect_contracts_store:subtree(map_data_key(RawId), Store),
-                                          GasA = spend_read_gas(Gas, subtree_bytes(FullSubtree)),
+                                          {FullSubtree, GasA} =
+                                              subtree_within_gas(map_data_key(RawId), Store, Gas),
                                           {maps:without(NewKeys, FullSubtree), SC#{RawId => FullSubtree}, GasA}
                                   end,
                               Count1 = aeb_fate_maps:refcount([ aeb_fate_encoding:deserialize(Val) || Val <- maps:values(OldBin) ]),
@@ -962,7 +982,7 @@ compute_inplace_updates(Unused, Maps) ->
 %% reference counts for maps referenced by it. This may trigger more garbage
 %% collection.
 %% GasLeft is charged per level for gc_refcounts/4's subtree reads; GcCache
-%% is merged across recursion levels so gc_map/3 can reuse the subtrees.
+%% is merged across recursion levels so gc_map/4 can reuse the subtrees.
 compute_garbage(Unused, Reuse, Metadata, Store, GasLeft) ->
     Garbage   = maps:keys(Unused) -- maps:keys(Reuse),
     case Garbage of
@@ -985,8 +1005,7 @@ gc_refcounts(Ids, Metadata, Store, GasLeft) ->
     lists:foldl(
       fun(Id, {CountsAcc, GcCacheAcc, GasAcc}) ->
               ?METADATA(RawId, _, _) = get_map_meta(Id, Metadata),
-              Data = aect_contracts_store:subtree(map_data_key(RawId), Store),
-              GasAcc1 = spend_read_gas(GasAcc, subtree_bytes(Data)),
+              {Data, GasAcc1} = subtree_within_gas(map_data_key(RawId), Store, GasAcc),
               Count = aeb_fate_maps:refcount_diff(aeb_fate_maps:refcount_zero(),
                         aeb_fate_maps:refcount_union(
                           [ aeb_fate_maps:refcount(aeb_fate_encoding:deserialize(Val))
