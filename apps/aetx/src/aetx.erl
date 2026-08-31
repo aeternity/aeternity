@@ -41,10 +41,11 @@
         , tx_min_gas/2
         , tx_type/1
         , tx_types/0
+        , no_base_gas_tx_types/0
         ]).
 
 -ifdef(TEST).
--export([tx/1]).
+-export([tx/1, min_gas_probe/3]).
 -endif.
 
 -define(IS_CONTRACT_TX(T), ((T =:= contract_create_tx) or (T =:= contract_call_tx)
@@ -253,11 +254,16 @@ deep_fee(AeTx, Trees, AccFee0) ->
             AccFee
     end.
 
+%% Above Iris this prices every transaction of a received micro block, on a
+%% path with no catch - so an unpriced type must answer here, not raise.
 -spec tx_min_gas(Tx :: tx(), Version :: aec_hard_forks:protocol_vsn()) -> Gas :: integer().
 tx_min_gas(#aetx{type = Type, size = Size, cb = CB, tx = Tx}, Version) when ?IS_CONTRACT_TX(Type) ->
     base_gas(Type, Version, CB:abi_version(Tx)) + size_gas(Size);
 tx_min_gas(#aetx{type = Type, size = Size}, Version) ->
-    base_gas(Type, Version) + size_gas(Size).
+    case lists:member(Type, no_base_gas_tx_types()) of
+        true  -> 0;
+        false -> base_gas(Type, Version) + size_gas(Size)
+    end.
 
 %% In case 0 is returned, the tx will not be included in the micro block
 %% candidate by the mempool.
@@ -293,14 +299,13 @@ gas_limit(#aetx{ type = paying_for_tx, cb = CB, size = Size, tx = Tx }, Height, 
     base_gas(paying_for_tx, Version) + size_gas(Size - ISize) + gas_limit(InnerTx, Height, Version);
 gas_limit(#aetx{type = Type, size = Size, cb = CB, tx = Tx}, _Height, Version) when ?IS_CONTRACT_TX(Type) ->
     base_gas(Type, Version, CB:abi_version(Tx)) + size_gas(Size) + CB:gas(Tx);
-gas_limit(#aetx{ type = Type, cb = CB, size = Size, tx = Tx }, _Height, Version) when
-      Type =/= channel_offchain_tx,
-      Type =/= channel_client_reconnect_tx ->
-    base_gas(Type, Version) + size_gas(Size) + CB:gas(Tx);
-gas_limit(#aetx{ type = channel_offchain_tx }, _Height, _Version) ->
-    0;
-gas_limit(#aetx{ type = channel_client_reconnect_tx }, _Height, _Version) ->
-    0.
+%% The same block-admission pricing path as tx_min_gas/2, for Iris and below.
+%% Read the list rather than repeating it as clause heads; the copies drifted.
+gas_limit(#aetx{ type = Type, cb = CB, size = Size, tx = Tx }, _Height, Version) ->
+    case lists:member(Type, no_base_gas_tx_types()) of
+        true  -> 0;
+        false -> base_gas(Type, Version) + size_gas(Size) + CB:gas(Tx)
+    end.
 
 -spec used_gas(Tx :: tx(), Height :: aec_blocks:height(),
                Version :: aec_hard_forks:protocol_vsn(), Trees :: aec_trees:trees()) ->
@@ -318,10 +323,23 @@ used_gas(#aetx{ type = ga_meta_tx, cb = CB, size = Size, tx = Tx }, Height, Vers
     Pubkey = CB:ga_pubkey(Tx),
     AuthCallId = CB:call_id(Tx, Trees),
     AuthGas = call_gas_used(Trees, Pubkey, AuthCallId),
-    base_gas(ga_meta_tx, Version, CB:abi_version(Tx)) + size_gas(Size) + AuthGas +
+    InnerTx = #aetx{ size = ISize } = aetx_sign:tx(CB:tx(Tx)),
+    base_gas(ga_meta_tx, Version, CB:abi_version(Tx)) + AuthGas +
         case CB:inner_tx_was_succesful(Tx, Trees) of
-            false -> 0;
-            true  -> used_gas(aetx_sign:tx(CB:tx(Tx)), Height, Version, Trees, Ctx#{ga_nonce => CB:auth_id(Tx)})
+            false ->
+                %% The inner transaction is not applied and never charged for
+                %% itself, so the envelope carries its bytes: Size, whole.
+                size_gas(Size);
+            true  ->
+                %% Size is the whole envelope, so used_gas(InnerTx) charges
+                %% the inner bytes twice. Netting it out below Arcus would
+                %% change which transactions fit in blocks already produced.
+                InnerGas = used_gas(InnerTx, Height, Version, Trees,
+                                    Ctx#{ga_nonce => CB:auth_id(Tx)}),
+                case Version >= ?ARCUS_PROTOCOL_VSN of
+                    true  -> size_gas(Size - ISize) + InnerGas;
+                    false -> size_gas(Size) + InnerGas
+                end
         end;
 used_gas(#aetx{type = contract_create_tx, cb = CB, size = Size, tx = Tx}, _Height, Version, Trees, #{ga_nonce := GANonce}) ->
     ContractPubkey = aect_contracts:compute_contract_pubkey(CB:owner_pubkey(Tx), GANonce),
@@ -364,7 +382,7 @@ min_gas_price(AETx, Height, Version) when Version < ?IRIS_PROTOCOL_VSN ->
     min_gas_price(AETx, Height, outer, Version);
 min_gas_price(AETx = #aetx{ type = Type, cb = CB, tx = Tx }, Height, Version) ->
     FeeGas = fee_gas(AETx, Height, Version),
-    FeeGasPrice = (CB:fee(Tx) + FeeGas - 1) div FeeGas,
+    FeeGasPrice = fee_gas_price(CB:fee(Tx), FeeGas),
     case Type of
         ga_meta_tx ->
             InnerMinGasPrice = min_gas_price(aetx_sign:tx(CB:tx(Tx)), Height, Version),
@@ -383,7 +401,7 @@ min_gas_price(AETx = #aetx{ type = Type, cb = CB, tx = Tx, size = Size }, Height
     FeeGas = if Kind == outer -> fee_gas(AETx, Height, Version);
                 Kind == inner -> fee_gas(AETx, Height, Version) - size_gas(Size)
              end,
-    FeeGasPrice = (CB:fee(Tx) + FeeGas - 1) div FeeGas,
+    FeeGasPrice = fee_gas_price(CB:fee(Tx), FeeGas),
     case Type of
         ga_meta_tx ->
             %% Also compute the minimum gas price for the wrapped Tx - make sure
@@ -420,6 +438,13 @@ fee_gas(#aetx{ type = Type, size = Size }, _Height, Version) when ?HAS_GAS_TX(Ty
     base_gas(Type, Version) + size_gas(Size);
 fee_gas(#aetx{} = Tx, Height, Version) ->
     gas_limit(Tx, Height, Version).
+
+%% A no_base_gas_tx_types/0 type covers no gas, and dividing by 0 raises - so
+%% answer 0 and let the caller's floor comparison reject the transaction.
+fee_gas_price(_Fee, 0) ->
+    0;
+fee_gas_price(Fee, FeeGas) ->
+    (Fee + FeeGas - 1) div FeeGas.
 
 -spec nonce(Tx :: tx()) -> Nonce :: non_neg_integer().
 nonce(#aetx{ cb = CB, tx = Tx }) ->
@@ -736,6 +761,12 @@ ttl_delta(Height, {block, _H} = TTL) ->
 -ifdef(TEST).
 tx(Tx) ->
     Tx#aetx.tx.
+
+%% Carries only what tx_min_gas/2 reads, so a test can walk every tx_types/0
+%% entry including channel_client_reconnect_tx, which type_to_cb/1 cannot
+%% construct. Nothing else - the rest of this module dereferences the tx field.
+min_gas_probe(Type, CB, Size) ->
+    #aetx{type = Type, cb = CB, size = Size, tx = undefined}.
 -endif.
 
 -spec tx_type(tx()) -> tx_type().
@@ -773,5 +804,14 @@ tx_types() ->
     , channel_offchain_tx
     , channel_client_reconnect_tx
     , paying_for_tx
+    , hc_vote_tx
+    ].
+
+%% Types aec_governance:tx_base_gas/2 has no clause for. It has no catch-all,
+%% so every consumer reads this list; the two private copies drifted apart.
+-spec no_base_gas_tx_types() -> [tx_type()].
+no_base_gas_tx_types() ->
+    [ channel_offchain_tx
+    , channel_client_reconnect_tx
     , hc_vote_tx
     ].

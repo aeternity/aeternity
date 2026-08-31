@@ -14,6 +14,13 @@
          apply_contract_call_tx/3
         ]).
 
+-ifdef(TEST).
+%% The gas budget below is consensus-visible, so aec_block_fork_tests pins it
+%% directly. Going through a full migration instead would not do: those cases
+%% only run when the eunit VM's network id makes Lima the latest protocol.
+-export([fork_contracts_static_specs/1]).
+-endif.
+
 -spec apply_minerva(aec_trees:trees()) -> aec_trees:trees().
 apply_minerva(Trees) ->
     apply_accounts_file(Trees, aec_fork_block_settings:minerva_accounts()).
@@ -116,9 +123,12 @@ apply_hard_fork_contracts_file(Specs0, Trees, TxEnv) ->
     Nonce         = get_nonce(OwnerPubkey, Trees2),
     hard_fork_contracts_post_processing(Contracts, OwnerPubkey, Nonce, Trees).
 
+%% Consensus-visible: this becomes the `gas` of every synthesised
+%% contract_create_tx at the fork transition, so an operator-set limit below
+%% that cost would diverge the state root at a fork block.
 fork_contracts_static_specs(TxEnv) ->
     OwnerPubkey   = aec_governance:locked_coins_holder_account(),
-    GasLimit      = aec_governance:block_gas_limit(),
+    GasLimit      = aec_governance:block_gas_limit(aetx_env:consensus_version(TxEnv)),
     GasPrice      = aec_governance:minimum_gas_price(aetx_env:consensus_version(TxEnv)),
     #{ owner_pubkey => OwnerPubkey
      , gas_limit    => GasLimit

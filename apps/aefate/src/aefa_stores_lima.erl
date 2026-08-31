@@ -37,6 +37,7 @@
         , new/0
         , put_contract_store/3
         , put_value/4
+        , terms_to_finalize/1
         %% Map functions
         , cache_map_metadata/2
         , store_map_lookup/4
@@ -319,6 +320,14 @@ finalize_entry(Pubkey, Cache = #cache_entry{store = Store}, {Writes, GasLeft}) -
     %% Performing the updates writes the necessary changes to the MP trees.
     {Store1, GasLeft1} = perform_store_updates(Metadata, Updates, Metadata1, GasLeft, Store),
     {[{Pubkey, Store1} | Writes], GasLeft1}.
+
+%% Frozen copy of the pre-Iris selection rule, so it stays pre-Iris when the
+%% live one changes. Without it finalize/1 handed a store built here to
+%% aefa_stores, which holds only while both record layouts happen to match.
+-spec terms_to_finalize(store()) -> [fate_val()].
+terms_to_finalize(#store{cache = Cache}) ->
+  [ Term || #cache_entry{dirty = true, terms = Terms} <- maps:values(Cache),
+            {Term, true} <- maps:values(Terms) ].
 
 %%%===================================================================
 %%% Store updates

@@ -1,11 +1,9 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2026, Aeternity Anstalt
 %%% @doc
-%%%    Pins the aefa_engine_state:aefa_stores_for_protocol/1 dispatch
-%%%    boundary, regression-tests that pre-Iris finalize/1 does not
-%%%    `undef` (aefa_stores_lima has no terms_to_finalize/1; finalize/1
-%%%    must call the live aefa_stores module directly for that step), and
-%%%    pins the dry-run store-read gas floor.
+%%%    Pins the aefa_stores_for_protocol/1 dispatch boundary, that pre-Iris
+%%%    finalize/1 runs entirely on aefa_stores_lima, the gas it charges, and
+%%%    the dry-run store-read gas floor.
 %%% @end
 %%%-------------------------------------------------------------------
 -module(aefa_engine_state_test).
@@ -123,6 +121,100 @@ lima_finalize_with_untouched_map_test() ->
     ?FATE_STORE_MAP(_Cache, MapId) = MapRegVal,
     {StoreList, _} = aefa_stores:store_map_to_list(?SR1_CONTRACT_PUBKEY, MapId, ReadBack),
     ?assertEqual([{map_key(), map_value()}], StoreList).
+
+%%%===================================================================
+%%% 3b. Pre-Iris (Lima) finalize runs entirely on the frozen module. The
+%%% traversal charge is inert below Iris, so the old fallback could not move
+%%% Lima gas; what it could do is hand a store built here to a function
+%%% matching the LIVE record layout - a crash the day the two diverge.
+%%%===================================================================
+
+-define(LIMA_TRAVERSAL_STORE_POS, 3).
+
+%% Every store module answers its own terms_to_finalize/1. Fails on a tree
+%% where aefa_stores_lima does not export it -- which is what forced
+%% finalize/1 to call the live module for the pre-Iris case.
+store_modules_export_terms_to_finalize_test_() ->
+    [ {atom_to_list(M) ++ " exports terms_to_finalize/1",
+       ?_assert(lists:member({terms_to_finalize, 1}, M:module_info(exports)))}
+      || M <- [aefa_stores_lima, aefa_stores_ceres, aefa_stores] ].
+
+%% The frozen pre-Iris selection rule, on a store built by the frozen
+%% module itself -- as on the real path, where aefa_stores_for_protocol/1
+%% dispatches the whole store lifecycle, not just finalize.
+lima_terms_to_finalize_selects_dirty_terms_test() ->
+    ?assertEqual([], aefa_stores_lima:terms_to_finalize(aefa_stores_lima:new())),
+    ?assertEqual([test_value()],
+                 aefa_stores_lima:terms_to_finalize(lima_native_dirty_store())).
+
+%% Gas a pre-Iris finalize/1 charges for one dirty integer register, measured
+%% on master before this change and unchanged by it. That equality is the
+%% point, not the numbers; the traversal component is 0 below Iris.
+-define(LIMA_TRAVERSAL_GAS, 0).
+-define(LIMA_FINALIZE_GAS, 55).
+
+lima_finalize_traversal_gas_test() ->
+    ?assertEqual(?LIMA_TRAVERSAL_GAS, lima_traversal_gas()).
+
+lima_finalize_gas_test() ->
+    ?assertEqual(?LIMA_FINALIZE_GAS, lima_finalize_gas()).
+
+%% A live module that no longer understands a pre-Iris store must not
+%% reach the pre-Iris path. Before this change finalize/1 called
+%% aefa_stores:terms_to_finalize/1 for that case, so this red-fails with
+%% the raise propagating out of finalize/1 instead of {ok, _}.
+lima_finalize_survives_live_divergence_test_() ->
+    {setup,
+     fun() ->
+             ok = meck:new(aefa_stores, [passthrough]),
+             %% Stands in for a live #store{}/#cache_entry{} that no
+             %% longer matches the frozen one.
+             meck:expect(aefa_stores, terms_to_finalize,
+                         fun(_) -> error(function_clause) end),
+             ok
+     end,
+     fun(_) -> meck:unload(aefa_stores) end,
+     [ {"pre-Iris finalize does not touch the live module",
+        fun() -> ?assertMatch({ok, _}, aefa_engine_state:finalize(lima_native_engine_state())) end}
+     , {"and its gas is unchanged",
+        fun() -> ?assertEqual(?LIMA_FINALIZE_GAS, lima_finalize_gas()) end}
+     ]}.
+
+lima_traversal_gas() ->
+    ES = lima_native_engine_state(),
+    Terms = aefa_stores_lima:terms_to_finalize(aefa_engine_state:stores(ES)),
+    ES1 = lists:foldl(fun(Val, ESn) ->
+                              aefa_engine_state:spend_gas_for_traversal(Val, serial, ESn)
+                      end, ES, Terms),
+    aefa_engine_state:gas(ES) - aefa_engine_state:gas(ES1).
+
+lima_finalize_gas() ->
+    ES = lima_native_engine_state(),
+    {ok, ES1} = aefa_engine_state:finalize(ES),
+    aefa_engine_state:gas(ES) - aefa_engine_state:gas(ES1).
+
+%% Store built end-to-end by aefa_stores_lima, so nothing here depends on
+%% the live module's #store{}/#cache_entry{} layout still matching it.
+lima_native_engine_state() ->
+    TxEnv = aetx_env:tx_env(_Height = 1, ?LIMA_PROTOCOL_VSN),
+    ChainApi = aefa_chain_api:new(#{ gas_price => 1
+                                   , fee       => 0
+                                   , origin    => ?SR1_CALLER_PUBKEY
+                                   , trees     => trees_with_one_contract()
+                                   , tx_env    => TxEnv
+                                   }),
+    ES = aefa_engine_state:new(_Gas = 1000000, _Value = 0,
+                               #{caller => ?SR1_CALLER_PUBKEY},
+                               lima_native_dirty_store(), ChainApi, #{},
+                               ?VM_FATE_SOPHIA_2),
+    aefa_engine_state:set_current_contract(?SR1_CONTRACT_PUBKEY, ES).
+
+lima_native_dirty_store() ->
+    Stores0 = aefa_stores_lima:put_contract_store(?SR1_CONTRACT_PUBKEY,
+                                                  aefa_stores_lima:initial_contract_store(),
+                                                  aefa_stores_lima:new()),
+    aefa_stores_lima:put_value(?SR1_CONTRACT_PUBKEY, ?LIMA_TRAVERSAL_STORE_POS,
+                               test_value(), Stores0).
 
 %%%===================================================================
 %%% 4. Dry-run store-read gas floor
