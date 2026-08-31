@@ -13,6 +13,10 @@
         , code_change/3
         ]).
 
+-ifdef(TEST).
+-export([adjust_tx/5]).
+-endif.
+
 start() ->
     ?MODULE ! start.
 
@@ -136,7 +140,7 @@ adjust_tx(Height, Protocol, Nonce, Payload, Tx0) ->
     MinFee = aetx:min_fee(Tx0, Height, Protocol),
     MinGasFee = GasPrice * GasLimit,
 
-    Fee = lists:max([MinFee, MinGasFee]),
+    Fee = lists:max([MinFee, MinGasFee, aemon_config:fee()]),
     raw_tx(Height, Nonce, Payload, Fee).
 
 raw_tx(Height, Nonce, Payload, Fee) ->
