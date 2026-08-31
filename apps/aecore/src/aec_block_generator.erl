@@ -38,6 +38,19 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
+-ifdef(TEST).
+-export([retry_delay/1]).
+-endif.
+
+%% A first failure is usually a one-off - a lost race with a preempt, a single bad
+%% transaction - and rebuilding at once is what keeps the leader producing.
+-define(IMMEDIATE_RETRIES, 1).
+
+%% Cap above the default mining.micro_block_cycle, so a persistent failure costs
+%% less than one candidate per cycle.
+-define(RETRY_DELAY_MS, 100).
+-define(MAX_RETRY_DELAY_MS, 5000).
+
 -record(state,
         { generating = false    :: boolean()
         , worker = undefined    :: undefined | {pid(), term()}
@@ -45,6 +58,8 @@
         , candidate_state = undefined :: undefined
                                        | aec_block_micro_candidate:block_info()
         , new_txs = []          :: list(aetx_sign:signed_tx())
+        , retries = 0           :: non_neg_integer()
+        , retry_timer = undefined :: undefined | reference()
         }).
 
 %% -- API --------------------------------------------------------------------
@@ -116,13 +131,13 @@ handle_cast({worker_done, Pid, {candidate, Candidate, CandidateState}},
             epoch_mining:info("New microblock candidate ready", []),
             publish_candidate(Candidate)
     end,
-    State1 = finish_worker(State),
+    State1 = clear_retry(finish_worker(State)),
     State2 = State1#state{ candidate = Candidate
                          , candidate_state = CandidateState },
     {noreply, maybe_start_worker_txs(State2)};
 handle_cast({worker_done, Pid, {unchanged, Reason}}, State = #state{ worker = {Pid, _} }) ->
     lager:debug("Microblock candidate unchanged: ~p", [Reason]),
-    {noreply, maybe_start_worker_txs(finish_worker(State))};
+    {noreply, maybe_start_worker_txs(clear_retry(finish_worker(State)))};
 handle_cast({worker_done, Pid, {failed, Reason}}, State = #state{ worker = {Pid, _}}) ->
     State1 = worker_failed(Reason, State),
     {noreply, State1};
@@ -154,6 +169,12 @@ handle_info({'DOWN', Ref, process, Pid, Reason}, State = #state{ worker = {Pid, 
 handle_info({'DOWN', _Ref, process, _Pid, _Reason}, State) ->
     %% Stale monitor message
     {noreply, State};
+handle_info(retry_candidate, State = #state{ generating = true, worker = undefined }) ->
+    {noreply, retry_now(State#state{ retry_timer = undefined })};
+handle_info(retry_candidate, State) ->
+    %% Cancelling cannot catch a message already sent, so a stop or a top change
+    %% racing the timer has to be dropped here
+    {noreply, State#state{ retry_timer = undefined }};
 handle_info(Msg, State) ->
     lager:info("Unexpected message ~p", [Msg]),
     {noreply, State}.
@@ -180,23 +201,26 @@ do_start_generation(S = #state{ candidate = Candidate }) ->
 
 %% When server is told to stop generation
 do_stop_generation(S = #state{ generating = true }) ->
-    S1 = stop_worker(S),
+    S1 = clear_retry(stop_worker(S)),
     S1#state{ generating = false };
 do_stop_generation(S) ->
     S.
 
-%% When a new transaction arrives, either cache it until the current worker
-%% has finished, or start a new worker to add it right away.
-add_new_tx(S = #state{ worker = Worker }, Tx) ->
-    case Worker of
-        undefined      -> start_worker_txs(S, [Tx]);
-        {_WPid, _WRef} -> S#state{ new_txs = [Tx | S#state.new_txs] }
-    end.
+add_new_tx(S = #state{ worker = undefined, candidate = undefined }, _Tx) ->
+    %% Nothing to extend, and the rebuild this is waiting on walks the pool itself
+    S;
+add_new_tx(S = #state{ worker = undefined }, Tx) ->
+    start_worker_txs(S, [Tx]);
+add_new_tx(S, Tx) ->
+    %% Only has to not lose it: the worker in flight cannot pick it up
+    S#state{ new_txs = [Tx | S#state.new_txs] }.
 
 %% Terminate current worker and start a new one
 %% (used when the top has changed)
 preempt_generation(S, #{ block_hash := NewTop }) ->
-    S1 = stop_worker(S),
+    %% A new top is a fresh cause, so it is not held back by, and does not count
+    %% towards, the failures accumulated against the old one.
+    S1 = clear_retry(stop_worker(S)),
     start_worker_block(S1, NewTop).
 
 stop_worker(S = #state{ worker = {WPid, WRef} }) ->
@@ -207,11 +231,45 @@ stop_worker(S = #state{ worker = {WPid, WRef} }) ->
 stop_worker(S) ->
     S.
 
-%% The candidate may be gone, so start over and drop new_txs.
-worker_failed(Reason, S) ->
+%% The candidate may be gone, so start over and drop new_txs. A failure that persists
+%% - unreadable state trees, a worker that crashes on the same input - would otherwise
+%% respawn flat out.
+worker_failed(Reason, S = #state{ retries = N }) ->
     lager:debug("Microblock candidate worker failed: ~p", [Reason]),
-    S1 = finish_worker(S),
-    start_worker(S1).
+    S1 = (finish_worker(S))#state{ retries = N + 1 },
+    case N + 1 =< ?IMMEDIATE_RETRIES of
+        true  -> retry_now(S1);
+        false -> schedule_retry(Reason, S1)
+    end.
+
+%% With no top to build on the timer is the only thing that would come back to it,
+%% and that attempt is counted so it backs off like any other
+retry_now(S) ->
+    case start_worker(S) of
+        S1 = #state{ worker = {_WPid, _WRef} } ->
+            S1;
+        S1 = #state{ retries = N } ->
+            schedule_retry(no_top_block, S1#state{ retries = N + 1 })
+    end.
+
+schedule_retry(Reason, S = #state{ retries = N, retry_timer = Pending }) ->
+    %% Makes one retry in flight structural rather than a property of the callers
+    [ erlang:cancel_timer(Pending) || Pending =/= undefined ],
+    Delay = retry_delay(N),
+    [ lager:warning("Microblock candidate worker keeps failing (~p), "
+                    "retrying with a delay", [Reason])
+      || N =:= ?IMMEDIATE_RETRIES + 1 ],   % once per run of failures, not per retry
+    S#state{ retry_timer = erlang:send_after(Delay, self(), retry_candidate) }.
+
+retry_delay(N) ->
+    %% Clamped both ways: retries are unbounded, and retry_now/1 can land here
+    %% off an immediate attempt that never got a worker.
+    Shift = max(0, min(N - ?IMMEDIATE_RETRIES - 1, 16)),
+    min(?MAX_RETRY_DELAY_MS, ?RETRY_DELAY_MS bsl Shift).
+
+clear_retry(S = #state{ retry_timer = Timer }) ->
+    [ erlang:cancel_timer(Timer) || Timer =/= undefined ],
+    S#state{ retries = 0, retry_timer = undefined }.
 
 %% Update server side bookkeeping when worker is already terminated
 finish_worker(S = #state{ worker = {_WPid, WRef} }) ->

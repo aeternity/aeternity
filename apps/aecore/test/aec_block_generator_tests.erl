@@ -8,6 +8,19 @@
 -define(WAIT_MS, 1000).
 %% How long to watch for something that must NOT happen.
 -define(SETTLE_MS, 200).
+%% Covers the retry taken at once and the module's next three, at 100, 200 and 400 ms,
+%% so a backoff that stopped growing shows up as a higher count.
+-define(BACKOFF_WINDOW_MS, 1000).
+%% A retry taken at once needs no timer so cannot be late; one the backoff has
+%% reached is several hundred ms out and cannot be this early.
+-define(IMMEDIATE_RETRY_MS, 250).
+
+%% Directly, because reaching the clamps through the gen_server would take ~30 s
+retry_delay_test_() ->
+    [?_assertEqual(100, ?GENERATOR:retry_delay(1)),
+     ?_assertEqual(100, ?GENERATOR:retry_delay(2)),
+     ?_assertEqual(200, ?GENERATOR:retry_delay(3)),
+     ?_assertEqual(5000, ?GENERATOR:retry_delay(50))].
 
 block_generator_top_change_test_() ->
     {foreach,
@@ -37,6 +50,28 @@ block_generator_unchanged_candidate_test_() ->
       {"ignores an unchanged reply from a preempted worker",
        fun test_ignores_unchanged_reply_from_preempted_worker/0}]}.
 
+block_generator_no_candidate_test_() ->
+    {foreach,
+     fun setup/0,
+     fun teardown/1,
+     [{"survives a new tx arriving with no candidate to extend",
+       fun test_caches_tx_with_no_top_block/0}]}.
+
+block_generator_failed_worker_backoff_test_() ->
+    {foreach,
+     fun setup/0,
+     fun teardown/1,
+     [{"spaces out rebuilds while creating a candidate keeps failing",
+       fun test_backs_off_after_repeated_create_failures/0},
+      {"rebuilds at once on a top change during backoff",
+       fun test_resumes_immediately_on_top_change_during_backoff/0},
+      {"goes back to full speed once a candidate is built",
+       fun test_recovers_after_transient_failure/0},
+      {"survives a new tx arriving while there is no candidate",
+       fun test_survives_tx_while_no_candidate/0},
+      {"clears the failures of the old run when generation is restarted",
+       fun test_restart_after_stop_retries_immediately/0}]}.
+
 setup() ->
     meck:new(aec_events, [non_strict]),
     meck:expect(aec_events, subscribe, fun(_) -> ok end),
@@ -49,7 +84,10 @@ setup() ->
     meck:new(aec_blocks, [non_strict]),
     meck:expect(aec_blocks, txs, fun(_) -> [dummy_tx] end),
 
-    {ok, _Pid} = ?GENERATOR:start_link(),
+    %% Unlinked: a generator crash should fail the test that provoked it, not kill the
+    %% process eunit shares with every later test module
+    {ok, Pid} = ?GENERATOR:start_link(),
+    unlink(Pid),
     ok.
 
 teardown(_) ->
@@ -396,12 +434,163 @@ test_ignores_unchanged_reply_from_preempted_worker() ->
     send_tx(Tx2),
     wait_for_update(Candidate1, [Tx2], State1).
 
+%% start_worker_txs/2 has no clause for an undefined candidate, and the gen_server
+%% dying takes aec_conductor with it under one_for_all. With no top block no worker is
+%% ever started, so this is the one state where a tx finds the slot idle and nothing
+%% to extend.
+test_caches_tx_with_no_top_block() ->
+    meck:expect(aec_chain, top_block, fun() -> undefined end),
+    GenPid = whereis(?GENERATOR),
+
+    ?GENERATOR:start_generation(),
+    [ send_tx({tx, N}) || N <- lists:seq(1, 5) ],
+
+    %% A plain call, so a dead server fails here rather than through get_candidate/0,
+    %% which answers no_candidate either way
+    ?assertEqual(running, ?GENERATOR:get_generation_state()),
+    ?assertEqual(GenPid, whereis(?GENERATOR)),
+    ?assertEqual({error, no_candidate}, ?GENERATOR:get_candidate()),
+
+    %% Nothing drains a cache built here, so no field may still be holding the txs
+    Fields = tuple_to_list(sys:get_state(?GENERATOR)),
+    ?assertEqual([], [ F || F <- Fields, is_list(F), F =/= [] ]).
+
+%% A build that keeps failing used to respawn flat out, two debug log lines an iteration
+test_backs_off_after_repeated_create_failures() ->
+    Calls = counters:new(1, []),
+    expect_failing_create(Calls),
+
+    ?GENERATOR:start_generation(),
+    timer:sleep(?BACKOFF_WINDOW_MS),
+
+    %% Five while the delays double; one that stopped growing lands above it
+    case counters:get(Calls, 1) of
+        Made when Made >= 3, Made =< 8 -> ok;
+        Made -> erlang:error({unexpected_create_count, Made})
+    end.
+
+test_resumes_immediately_on_top_change_during_backoff() ->
+    TestPid = self(),
+    DeferredTop = <<"top-1">>,
+    Calls = counters:new(1, []),
+
+    meck:expect(
+      aec_block_micro_candidate,
+      create,
+      fun(Top) when Top =:= DeferredTop ->
+              TestPid ! {create_called, DeferredTop, self()},
+              {error, block_state_not_found};
+         (_Top) ->
+              counters:add(Calls, 1, 1),
+              {error, block_state_not_found}
+      end),
+
+    ?GENERATOR:start_generation(),
+    timer:sleep(?BACKOFF_WINDOW_MS),
+    ?assert(counters:get(Calls, 1) >= 2),
+
+    %% Not held back by the pending retry, and not counted against it either
+    meck:expect(aec_chain, top_block, fun() -> DeferredTop end),
+    defer_micro_top(DeferredTop),
+    wait_for_create(DeferredTop),
+    wait_for_create(DeferredTop, ?IMMEDIATE_RETRY_MS).
+
+test_recovers_after_transient_failure() ->
+    TestPid = self(),
+    InitialTop = <<"top-0">>,
+    Candidate0 = candidate_0,
+    State0 = candidate_state_0,
+    Tx1 = tx_1,
+    Calls = counters:new(1, []),
+
+    %% Fails long enough to be backing off, then builds
+    meck:expect(
+      aec_block_micro_candidate,
+      create,
+      fun(_Top) ->
+              N = counters:get(Calls, 1),
+              counters:add(Calls, 1, 1),
+              case N of
+                  3 ->
+                      {ok, Candidate0, State0};
+                  _ when N < 3 ->
+                      {error, block_state_not_found};
+                  _ ->
+                      TestPid ! {create_called, InitialTop, self()},
+                      {error, block_state_not_found}
+              end
+      end),
+    meck:expect(
+      aec_block_micro_candidate,
+      update,
+      fun(_Block, _Txs, _BlockInfo) -> {error, simulated_failure} end),
+
+    ?GENERATOR:start_generation(),
+    wait_for_candidate(Candidate0),
+
+    %% A build that got through clears the count, so this is retried at once
+    %% rather than at the delay already reached
+    send_tx(Tx1),
+    wait_for_create(InitialTop, ?IMMEDIATE_RETRY_MS).
+
+%% start_worker_txs/2 has no clause for an undefined candidate, and the gen_server
+%% dying takes aec_conductor with it under one_for_all
+test_survives_tx_while_no_candidate() ->
+    Calls = counters:new(1, []),
+    expect_failing_create(Calls),
+    GenPid = whereis(?GENERATOR),
+
+    ?GENERATOR:start_generation(),
+    %% A failing build returns at once, so these all arrive with the slot idle
+    [ begin send_tx({tx, N}), timer:sleep(25) end || N <- lists:seq(1, 12) ],
+
+    ?assertEqual(GenPid, whereis(?GENERATOR)),
+    ?assertEqual({error, no_candidate}, ?GENERATOR:get_candidate()),
+    ?assert(counters:get(Calls, 1) >= 2).
+
+%% Stopping ends a run of failures, so a restart is not held back by them
+test_restart_after_stop_retries_immediately() ->
+    TestPid = self(),
+    Calls = counters:new(1, []),
+    expect_failing_create(Calls),
+
+    ?GENERATOR:start_generation(),
+    timer:sleep(?BACKOFF_WINDOW_MS),
+    ?assert(counters:get(Calls, 1) >= 2),
+    ok = ?GENERATOR:stop_generation(),
+
+    meck:expect(
+      aec_block_micro_candidate,
+      create,
+      fun(Top) ->
+              TestPid ! {create_called, Top, self()},
+              {error, block_state_not_found}
+      end),
+
+    ?GENERATOR:start_generation(),
+    wait_for_create(<<"top-0">>),
+    %% Taken at once, rather than at the delay the stopped run had reached
+    wait_for_create(<<"top-0">>, ?IMMEDIATE_RETRY_MS).
+
+%% Sends nothing, so an unbounded respawn loop fills the counter, not the mailbox
+expect_failing_create(Calls) ->
+    meck:expect(
+      aec_block_micro_candidate,
+      create,
+      fun(_Top) ->
+              counters:add(Calls, 1, 1),
+              {error, block_state_not_found}
+      end).
+
 wait_for_create(ExpectedTop) ->
+    wait_for_create(ExpectedTop, ?WAIT_MS).
+
+wait_for_create(ExpectedTop, TimeoutMs) ->
     receive
         {create_called, ExpectedTop, WorkerPid} ->
             WorkerPid
-    after ?WAIT_MS ->
-        ?assert(false)
+    after TimeoutMs ->
+        erlang:error({timeout, no_create, ExpectedTop})
     end.
 
 wait_for_update(ExpectedCandidate, ExpectedTxs, ExpectedState) ->
