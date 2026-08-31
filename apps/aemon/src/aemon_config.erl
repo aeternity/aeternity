@@ -8,6 +8,7 @@
         , autostart/0
         , interval/0
         , ttl/0
+        , fee/0
         ]).
 
 %% ==================================================================
@@ -43,6 +44,11 @@ interval() ->
 
 ttl() ->
     env(<<"ttl">>, publisher_spend_ttl, 10).
+
+%% Operator-configured fee floor; adjust_tx/5 still raises it to the
+%% protocol minimum and to the current miner gas price if either is higher.
+fee() ->
+    env(<<"fee">>, publisher_fee, 0).
 
 %% ==================================================================
 %% internal functions

@@ -2402,6 +2402,12 @@
                             "type" : "integer",
                             "minimum" : 0
                         },
+                        "fee" : {
+                            "description" : "Minimum fee (in aettos) for the monitoring spend transaction; the fee actually used is the largest of this, the protocol minimum, and the current miner gas price times the transaction's gas limit.",
+                            "type" : "integer",
+                            "minimum" : 0,
+                            "default" : 0
+                        },
                         "pubkey" : {
                             "description" : "Public key of transaction publisher.",
                             "type" : "string",
