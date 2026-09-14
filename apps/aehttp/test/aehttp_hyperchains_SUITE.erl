@@ -1325,9 +1325,8 @@ recover_past_short_next_epoch(Config, Top, DownSlots, DownNode, LiveNode) ->
 schedule_for_epoch(Node, Epoch) ->
     {ok, #{length := Length, validators := Validators}} =
         rpc(Node, aec_chain_hc, epoch_info_for_epoch, [Epoch]),
-    ParentHeight = rpc(Node, aec_consensus_hc, entropy_height, [Epoch]),
-    {ok, Header} = rpc(?PARENT_CHAIN_NODE, aec_chain, get_key_header_by_height, [ParentHeight]),
-    {ok, Seed} = aec_headers:hash_header(Header),
+    %% The seed is the encoded parent block hash, as the node's parent connector returns it.
+    {_, Seed} = get_entropy(Node, Epoch),
     {ok, Schedule} = rpc(Node, aec_chain_hc, validator_schedule, [top, Seed, Validators, Length]),
     Schedule.
 
