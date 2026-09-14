@@ -943,10 +943,11 @@ next_producer() ->
                     %% slot would stall forever, and any single fallback slot
                     %% deadlocks if its leader is offline. Instead produce at the
                     %% earliest passed slot this node leads (holes fill the gap),
-                    %% so any live producer can unstick a stalled chain.
-                    {ok, #{last := Last, length := Length}} = aec_chain_hc:epoch_info(RunEnv),
-                    MaxSlot = min(Slot, Last + Length),
-                    case own_slot_after_stall(TopHeight + 1, MaxSlot) of
+                    %% so any live producer can unstick a stalled chain. The
+                    %% scan is not capped at this epoch's length: an epoch
+                    %% length vote makes the next epochs shorter or longer.
+                    {ok, #{epoch := Epoch}} = aec_chain_hc:epoch_info(RunEnv),
+                    case own_slot_after_stall(TopHeight + 1, Slot, RunEnv, Epoch) of
                         {ok, OwnSlot, Leader} ->
                             activate_next_leader(Leader, TopHeight, SlotInfo#{slot := OwnSlot}, RunEnv);
                         none ->
@@ -1118,22 +1119,66 @@ cache_validators_for_epoch(RunEnv, Epoch) ->
         _Err            -> error
     end.
 
-%% After a stall, scan the passed-but-unproduced slots (already cached by
-%% leader_for_timeslot/2, incl. next-epoch spill-over) for the earliest one
-%% this node holds the leader key for. Stops at the first uncached slot.
-own_slot_after_stall(FromSlot, MaxSlot) when FromSlot =< MaxSlot ->
-    case leader_for_height(FromSlot) of
+%% After a stall, scan the passed-but-unproduced slots for the earliest one
+%% this node holds the leader key for: first the cached schedule (the current
+%% and, when resolvable, the next epoch - cached by leader_for_timeslot/2), then
+%% the epoch after next. Stops at the first slot neither of them resolves.
+own_slot_after_stall(FromSlot, MaxSlot, RunEnv, Epoch) ->
+    case scan_own_slot(FromSlot, MaxSlot, fun leader_for_height/1) of
+        {unresolved, Slot} when Slot =< MaxSlot ->
+            Schedule = schedule_after_next_epoch(RunEnv, Epoch),
+            Lookup = fun(S) -> case maps:find(S, Schedule) of
+                                   {ok, Leader} -> {ok, Leader};
+                                   error        -> {error, not_in_schedule}
+                               end
+                     end,
+            case scan_own_slot(Slot, MaxSlot, Lookup) of
+                {ok, _OwnSlot, _Leader} = Found -> Found;
+                {unresolved, _}                 -> none
+            end;
+        {unresolved, _} ->
+            none;
+        {ok, _OwnSlot, _Leader} = Found ->
+            Found
+    end.
+
+scan_own_slot(Slot, MaxSlot, _Lookup) when Slot > MaxSlot ->
+    {unresolved, Slot};
+scan_own_slot(Slot, MaxSlot, Lookup) ->
+    case Lookup(Slot) of
         {ok, Leader} ->
             SignModule = get_sign_module(),
             case SignModule:is_key_present(Leader) of
-                true  -> {ok, FromSlot, Leader};
-                false -> own_slot_after_stall(FromSlot + 1, MaxSlot)
+                true  -> {ok, Slot, Leader};
+                false -> scan_own_slot(Slot + 1, MaxSlot, Lookup)
             end;
         {error, _} ->
-            none
-    end;
-own_slot_after_stall(_FromSlot, _MaxSlot) ->
-    none.
+            {unresolved, Slot}
+    end.
+
+%% The epoch after next is already fixed while this epoch runs: its start,
+%% length and stake distribution were set by earlier end-of-epoch steps, and
+%% its seed is the parent block that step_key/4 hands to step_eoe at the end of
+%% this epoch. It is only cached once that end-of-epoch block exists, though,
+%% so when this epoch's last slot and all of a short next epoch are led by
+%% validators that are down, no live producer would see a slot of its own and
+%% the stall could not end. Computed here but never cached: the seed is not on
+%% chain yet, and the end-of-epoch block caches the schedule it validates with.
+schedule_after_next_epoch(RunEnv, Epoch) ->
+    AfterNext = Epoch + 2,
+    case epoch_info_for_epoch(RunEnv, AfterNext) of
+        {ok, #{first := First, length := Length, validators := Validators}} when is_list(Validators) ->
+            case aec_parent_chain_cache:get_block_by_height(entropy_height(AfterNext)) of
+                {ok, Block} ->
+                    Seed = aec_parent_chain_block:hash(Block),
+                    {ok, RawSchedule} = aec_chain_hc:validator_schedule(RunEnv, Seed, Validators, Length),
+                    maps:from_list(enumerate(First, RawSchedule));
+                {error, _} ->
+                    #{}
+            end;
+        _ ->
+            #{}
+    end.
 
 cache_validators_for_epoch(RunEnv, Hash, Epoch) ->
     case epoch_info_for_epoch(RunEnv, Epoch) of
