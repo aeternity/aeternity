@@ -43,7 +43,8 @@
          sanity_check_vote_tx/1,
          hole_production/1,
          hole_production_eoe/1,
-         production_recovers_after_long_stall/1
+         production_recovers_after_long_stall/1,
+         stall_recovery_past_short_next_epoch/1
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -164,7 +165,7 @@
 -define(GENESIS_BENFICIARY, <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>).
 
 all() -> [{group, hc}, {group, epochs_slow}, {group, epochs_fast}, {group, hc_hole},
-          {group, pinning}, {group, default_pin}, {group, config}
+          {group, hc_short_epoch}, {group, pinning}, {group, default_pin}, {group, config}
           ].
 
 groups() ->
@@ -204,6 +205,13 @@ groups() ->
           , hole_production
           , hole_production_eoe
           , production_recovers_after_long_stall
+          ]}
+      %% Own group: it drives epochs down to a single slot, which no other
+      %% case expects, and a hc_hole flake must not auto-skip it.
+    , {hc_short_epoch, [sequence],
+          [ start_two_child_nodes
+          , produce_first_epoch
+          , stall_recovery_past_short_next_epoch
           ]}
     , {pinning, [sequence],
           [ start_two_child_nodes,
@@ -1226,6 +1234,102 @@ production_recovers_after_long_stall(Config) ->
     ok = produce_n_epochs(Config, 1, #{timeout => 20000}, 3),
 
     ok.
+
+%% Regression test: a fast parent chain makes the epoch length vote shrink
+%% epochs down to a single slot. When every slot of the current and the next
+%% epoch is led by validators whose node is down, the live node's first slot is
+%% in the epoch after next - whose seed is only written by the end-of-epoch
+%% block nobody can produce. The live node must still find that slot and fill
+%% the gap with holes, or the chain stalls for as long as the other node is down.
+%% Which node leads which slot comes from parent block hashes, so the case
+%% produces single-slot epochs until the schedule lines up.
+stall_recovery_past_short_next_epoch(Config) ->
+    [{Node, _, _, _} | _] = ?config(nodes, Config),
+    produce_until_next_epoch(Config),
+    {ok, #{epoch := Epoch}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    %% One burst of parent blocks, mined milliseconds apart, carries the entropy
+    %% for every epoch this case reaches: the length vote reads the time between
+    %% two entropy blocks, finds the parent far too fast and votes epochs down.
+    MaxShrinkEpochs = 12,
+    Attempts = 40,
+    mine_parent_to_entropy_height(Node, Epoch + MaxShrinkEpochs + Attempts + 3),
+    ok = produce_until_single_slot_epoch(Config, MaxShrinkEpochs),
+    stall_past_short_next_epoch(Config, Attempts).
+
+mine_parent_to_entropy_height(Node, Epoch) ->
+    Target = rpc(Node, aec_consensus_hc, entropy_height, [Epoch]) + ?PARENT_FINALITY,
+    ParentTop = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+    {ok, _} = mine_key_blocks(?PARENT_CHAIN_NODE_NAME, max(0, Target - ParentTop)),
+    ok.
+
+produce_until_single_slot_epoch(Config, EpochsLeft) ->
+    [{Node, _, _, _} | _] = ?config(nodes, Config),
+    {ok, #{epoch := Epoch, last := Last, length := Length}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    ct:log("Epoch ~p has length ~p", [Epoch, Length]),
+    case Length of
+        1 ->
+            ok;
+        _ ->
+            ?assert(EpochsLeft > 0),
+            Top = rpc(Node, aec_chain, top_height, []),
+            {ok, _} = produce_cc_blocks(Config, Last - Top, #{parent_produce => [], timeout => 10000}),
+            produce_until_single_slot_epoch(Config, EpochsLeft - 1)
+    end.
+
+stall_past_short_next_epoch(_Config, 0) ->
+    {skip, schedule_never_put_both_short_epochs_on_one_node};
+stall_past_short_next_epoch(Config, Attempts) ->
+    [{Node, _, _, _} | _] = ?config(nodes, Config),
+    AllNodes = [ Name || {_, Name, _, _} <- ?config(nodes, Config) ],
+    Top = rpc(Node, aec_chain, top_height, []),
+    {ok, #{epoch := Epoch, first := First, length := Length}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    {ok, #{length := NextLength}} = rpc(Node, aec_chain_hc, epoch_info_for_epoch, [Epoch + 1]),
+    Slots = lists:seq(First, First + Length + NextLength - 1),
+    Leaders = [ rpc(Node, aec_consensus_hc, leader_for_height, [S]) || S <- Slots ],
+    LeaderNodes = lists:usort([ producer_node(L, Config) || {ok, L} <- Leaders ]),
+    AllCached = lists:all(fun({ok, _}) -> true; (_) -> false end, Leaders),
+    case {First == Top + 1 andalso AllCached, LeaderNodes} of
+        {true, [DownNode]} ->
+            [LiveNode] = AllNodes -- [DownNode],
+            AfterNext = [ producer_node(L, Config) || L <- schedule_for_epoch(Node, Epoch + 2) ],
+            case lists:member(LiveNode, AfterNext) of
+                true ->
+                    recover_past_short_next_epoch(Config, Top, length(Slots), DownNode, LiveNode);
+                false ->
+                    produce_next_short_epoch(Config, Attempts)
+            end;
+        _ ->
+            produce_next_short_epoch(Config, Attempts)
+    end.
+
+produce_next_short_epoch(Config, Attempts) ->
+    {ok, _} = produce_cc_blocks(Config, 1, #{parent_produce => [], timeout => 10000}),
+    stall_past_short_next_epoch(Config, Attempts - 1).
+
+recover_past_short_next_epoch(Config, Top, DownSlots, DownNode, LiveNode) ->
+    [{Node, _, _, _} | _] = ?config(nodes, Config),
+    ct:log("Top ~p: the next ~p slots are all led from ~p, producing on ~p only",
+           [Top, DownSlots, DownNode, LiveNode]),
+    {ok, Bs} = produce_cc_blocks(Config, 1, #{prod_nodes => [LiveNode], parent_produce => [],
+                                              timeout => 30000}),
+    Holes = [ B || B <- Bs, key == aec_blocks:type(B),
+                   aec_headers:is_hole(aec_blocks:to_key_header(B)) ],
+    ct:log("Produced ~p holes past the short epochs", [length(Holes)]),
+    ?assert(length(Holes) >= DownSlots),
+    ?assert(rpc(Node, aec_chain, top_height, []) > Top + DownSlots),
+    %% And the chain keeps going once the other node is back.
+    {ok, _} = produce_cc_blocks(Config, 3, #{parent_produce => [], timeout => 10000}),
+    ok.
+
+%% The schedule a node can only cache once the end-of-epoch block before Epoch exists.
+schedule_for_epoch(Node, Epoch) ->
+    {ok, #{length := Length, validators := Validators}} =
+        rpc(Node, aec_chain_hc, epoch_info_for_epoch, [Epoch]),
+    ParentHeight = rpc(Node, aec_consensus_hc, entropy_height, [Epoch]),
+    {ok, Header} = rpc(?PARENT_CHAIN_NODE, aec_chain, get_key_header_by_height, [ParentHeight]),
+    {ok, Seed} = aec_headers:hash_header(Header),
+    {ok, Schedule} = rpc(Node, aec_chain_hc, validator_schedule, [top, Seed, Validators, Length]),
+    Schedule.
 
 %%%=============================================================================
 %%% HC Endpoints
