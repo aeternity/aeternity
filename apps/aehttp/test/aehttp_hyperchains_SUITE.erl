@@ -44,7 +44,8 @@
          hole_production/1,
          hole_production_eoe/1,
          production_recovers_after_long_stall/1,
-         stall_recovery_past_short_next_epoch/1
+         stall_recovery_past_short_next_epoch/1,
+         default_production_past_shortened_epoch/1
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -165,7 +166,8 @@
 -define(GENESIS_BENFICIARY, <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>).
 
 all() -> [{group, hc}, {group, epochs_slow}, {group, epochs_fast}, {group, hc_hole},
-          {group, hc_short_epoch}, {group, pinning}, {group, default_pin}, {group, config}
+          {group, hc_short_epoch}, {group, hc_shortened_epoch}, {group, pinning},
+          {group, default_pin}, {group, config}
           ].
 
 groups() ->
@@ -212,6 +214,12 @@ groups() ->
           [ start_two_child_nodes
           , produce_first_epoch
           , stall_recovery_past_short_next_epoch
+          ]}
+      %% Own group: it needs the early epochs' lengths untouched by any vote.
+    , {hc_shortened_epoch, [sequence],
+          [ start_two_child_nodes
+          , produce_first_epoch
+          , default_production_past_shortened_epoch
           ]}
     , {pinning, [sequence],
           [ start_two_child_nodes,
@@ -1338,6 +1346,48 @@ recover_past_short_next_epoch(Config, Top, DownSlots, DownNode, LiveNode) ->
     {ok, _} = produce_cc_blocks(Config, 3, #{parent_produce => [], timeout => 10000}),
     ok.
 
+%% Regression test: the default parent schedule spreads parent blocks as if
+%% every epoch kept the length of the one production starts in. Once the epoch
+%% length vote shrinks an epoch, its end-of-epoch block needs an entropy block
+%% the schedule has not mined yet, and a call to produce_cc_blocks that runs
+%% into that epoch waits for a parent block nobody mines.
+default_production_past_shortened_epoch(Config) ->
+    [{Node, _, _, _} | _] = ?config(nodes, Config),
+    %% The vote at the end of an epoch reads the time between that epoch's
+    %% entropy block and the next one's. Votes before epoch 5 are always 0,
+    %% so epochs up to 7 keep their length; mining the entropy blocks of
+    %% epochs 5 and 6 milliseconds apart makes the vote at the end of epoch 5
+    %% shrink epoch 8.
+    VoteEpoch = 5,
+    Shortened = VoteEpoch + 3,
+    {ok, #{epoch := Epoch}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    ParentTop = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+    ?assert(Epoch =< VoteEpoch),
+    ?assert(ParentTop < rpc(Node, aec_consensus_hc, entropy_height, [VoteEpoch])),
+    %% The burst stops where the default schedule stands at the start of the
+    %% epoch before the shortened one, so the parent has no lead there.
+    mine_parent_to_entropy_height(Node, Shortened),
+    ok = produce_to_epoch_start(Config, Shortened - 1),
+    {ok, #{length := Length}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    {ok, #{length := ShortLength}} = rpc(Node, aec_chain_hc, epoch_info_for_epoch, [Shortened]),
+    ct:log("Epoch ~p has length ~p, epoch ~p has length ~p",
+           [Shortened - 1, Length, Shortened, ShortLength]),
+    ?assert(ShortLength < Length),
+    %% Default parent schedule, past the end of the shortened epoch.
+    {ok, _} = produce_cc_blocks(Config, Length + ShortLength + 1, #{timeout => 10000}),
+    ok.
+
+produce_to_epoch_start(Config, TargetEpoch) ->
+    [{Node, _, _, _} | _] = ?config(nodes, Config),
+    Top = rpc(Node, aec_chain, top_height, []),
+    case rpc(Node, aec_chain_hc, epoch_info, []) of
+        {ok, #{epoch := TargetEpoch, first := First}} when First == Top + 1 ->
+            ok;
+        {ok, #{epoch := Epoch, last := Last}} when Epoch =< TargetEpoch ->
+            {ok, _} = produce_cc_blocks(Config, Last - Top, #{parent_produce => [], timeout => 10000}),
+            produce_to_epoch_start(Config, TargetEpoch)
+    end.
+
 %% The schedule a node can only cache once the end-of-epoch block before Epoch exists.
 schedule_for_epoch(Node, Epoch) ->
     {ok, #{length := Length, validators := Validators}} =
@@ -2045,6 +2095,8 @@ produce_cc_blocks(Config, BlocksCnt, ProdCfg) ->
             PP ->
                 PP
         end,
+    %% Only the default schedule is topped up; explicit ones are the test's call.
+    FeedParent = not maps:is_key(parent_produce, ProdCfg),
     PNodes =
         case maps:get(prod_nodes, ProdCfg, undefined) of
             undefined ->
@@ -2059,7 +2111,8 @@ produce_cc_blocks(Config, BlocksCnt, ProdCfg) ->
     %% assert that the parent chain is not mining
     ?assertEqual(stopped, rpc:call(?PARENT_CHAIN_NODE_NAME, aec_conductor, get_mining_state, [])),
     ct:log("parent produce ~p", [ParentProduce]),
-    NewTopHeight0 = produce_to_cc_height(Config, TopHeight, TopHeight + BlocksCnt, ParentProduce, PNodes, Timeout),
+    NewTopHeight0 = produce_to_cc_height(Config, TopHeight, TopHeight + BlocksCnt, ParentProduce,
+                                         FeedParent, PNodes, Timeout),
     wait_same_top([ N || {N, _, _, _} <- ?config(nodes, Config)]),
     %% produce_to_cc_height counts holes from all subscribed nodes; a hole that
     %% loses a same-height fork race to a real block inflates the count past
@@ -2074,8 +2127,29 @@ produce_pc_block([{CH, PBs} | PPs], TopHeight) when CH =< TopHeight ->
 produce_pc_block(PPs, _TopHeight) ->
     PPs.
 
+%% The end-of-epoch block of epoch E waits until the entropy block of epoch E + 2
+%% is final on the parent chain. The default schedule places parent blocks for
+%% epochs as long as the first one, so it is exactly on time while they keep
+%% that length and behind once the length vote shrinks one. Top the parent up
+%% right before such a block; while the schedule is on time this mines nothing.
+feed_parent_for_epoch_end(Config, PNodes) ->
+    [{Node, _, _, _} | _] = ?config(nodes, Config),
+    {Top, TopNode} = lists:max([ {rpc:call(N, aec_chain, top_height, []), N} || N <- PNodes ]),
+    {ok, #{epoch := Epoch, last := Last}} = rpc:call(TopNode, aec_chain_hc, epoch_info, []),
+    case Last == Top + 1 of
+        true ->
+            Target = rpc(Node, aec_consensus_hc, entropy_height, [Epoch + 2]) + ?PARENT_FINALITY,
+            ParentTop = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+            %% mine_key_blocks/2 mines a mempool-emptying parent micro block even
+            %% for zero key blocks, so only call it when something is missing.
+            [ {ok, _} = mine_key_blocks(?PARENT_CHAIN_NODE_NAME, Target - ParentTop) || ParentTop < Target ],
+            ok;
+        false ->
+            ok
+    end.
+
 %% It seems we automatically produce child chain blocks in the background
-produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce, PNodes, Timeout) ->
+produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce, FeedParent, PNodes, Timeout) ->
     NodeNames = [ Name || {_, Name, _, _} <- ?config(nodes, Config) ],
     BlocksNeeded = GoalHeight - TopHeight,
     case BlocksNeeded > 0 of
@@ -2085,6 +2159,7 @@ produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce, PNodes, Timeo
             TopHeight;
         true ->
             NewParentProduce = produce_pc_block(ParentProduce, TopHeight + 1),
+            [ ok = feed_parent_for_epoch_end(Config, PNodes) || FeedParent ],
 
             %% TODO: add some assertions when we expect an MB (and not)!
             {ok, _Txs} = rpc:call(hd(NodeNames), aec_tx_pool, peek, [infinity]),
@@ -2112,7 +2187,8 @@ produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce, PNodes, Timeo
 
             Producer = get_block_producer_name(?config(staker_names, Config), KeyBlock),
             ct:log("~p produced CC block at height ~p", [Producer, aec_blocks:height(KeyBlock)]),
-            produce_to_cc_height(Config, TopHeight + NHoles + 1, GoalHeight + NHoles, NewParentProduce, PNodes, Timeout)
+            produce_to_cc_height(Config, TopHeight + NHoles + 1, GoalHeight + NHoles, NewParentProduce,
+                                 FeedParent, PNodes, Timeout)
       end.
 
 mine_cc_blocks(NodeNames, N, Timeout) ->
